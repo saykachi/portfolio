@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sayka — Developer Portfolio</title>
+  <meta name="description" content="Sayka (saykachi) — developer from Ukraine building TUI tools, bots, web apps and REST APIs.">
+  <meta name="theme-color" content="#0a0a0b">
+  <meta property="og:title" content="Sayka — Developer Portfolio">
+  <meta property="og:description" content="TUI tools, bots, web apps and REST APIs.">
+  <meta property="og:image" content="https://avatars.githubusercontent.com/u/108486488?v=4">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script>document.documentElement.classList.replace('no-js', 'js');</script>
+</head>
+<body>
+  <!-- Icon sprite -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M7 17 17 7M8 7h9v9"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7 9 3 3-3 3M13 15h4"/></symbol>
+    <symbol id="i-bot" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="12" rx="4"/><path d="M12 4v4M2 13v3M22 13v3"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 8-4 4 4 4M16 8l4 4-4 4M14 5l-4 14"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01M11 7.5h6M11 16.5h6"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1 1"/><path d="M14 10a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1-1"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11Z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+    <symbol id="i-case" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3 3 10.5l7 2.5 2.5 7L21 3Z"/><path d="m10 13 4-4"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.2A8 8 0 1 1 20 12Z"/><path d="M9 11h.01M12 11h.01M15 11h.01"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path stroke="none" fill="currentColor" d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-1.97c-3.2.7-3.87-1.37-3.87-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.03 1.76 2.69 1.25 3.35.96.1-.74.4-1.25.73-1.54-2.56-.29-5.25-1.28-5.25-5.68 0-1.26.45-2.28 1.18-3.09-.12-.29-.51-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.62 1.59.23 2.76.11 3.05.74.81 1.18 1.83 1.18 3.09 0 4.41-2.69 5.38-5.26 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5Z"/></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 1c.4 6.2 2.8 9.6 11 11-8.2 1.4-10.6 4.8-11 11-.4-6.2-2.8-9.6-11-11 8.2-1.4 10.6-4.8 11-11Z"/></symbol>
+  </svg>
+
+  <!-- Preloader -->
+  <div class="preloader" aria-hidden="true">
+    <div class="preloader__name"><span>s</span><span>a</span><span>y</span><span>k</span><span>a</span><span class="accent-text">.</span></div>
+    <div class="preloader__bar"><i></i></div>
+    <div class="preloader__count"><span id="preCount">0</span>%</div>
+  </div>
+
+  <!-- Background -->
+  <div class="bg" aria-hidden="true">
+    <div class="bg__grid"></div>
+    <div class="bg__orb bg__orb--1"></div>
+    <div class="bg__orb bg__orb--2"></div>
+    <div class="bg__noise"></div>
+  </div>
+
+  <!-- Custom cursor -->
+  <div class="cursor" aria-hidden="true"></div>
+  <div class="cursor-ring" aria-hidden="true"><span class="cursor-ring__label"></span></div>
+
+  <div class="progress" aria-hidden="true"><i></i></div>
+
+  <!-- Header -->
+  <header class="header" id="header">
+    <div class="container header__inner">
+      <a href="#home" class="logo" aria-label="Sayka — home">sayka<span class="accent-text">.</span></a>
+
+      <nav class="nav" aria-label="Main">
+        <span class="nav__indicator" aria-hidden="true"></span>
+        <a href="#home" class="nav__link is-active" data-i18n="nav.home">Home</a>
+        <a href="#about" class="nav__link" data-i18n="nav.about">About</a>
+        <a href="#works" class="nav__link" data-i18n="nav.works">Works</a>
+        <a href="#contact" class="nav__link" data-i18n="nav.contact">Contact</a>
+      </nav>
+
+      <div class="header__actions">
+        <button class="icon-btn" id="accentBtn" type="button" data-i18n-attr="aria-label:ui.accent" aria-label="Change accent colour"><span class="accent-dot"></span></button>
+        <button class="icon-btn lang-btn" id="langBtn" type="button" data-i18n-attr="aria-label:ui.lang" aria-label="Switch language">RU</button>
+        <a href="#contact" class="btn btn--pill magnetic header__cta"><span data-i18n="nav.talk">Let's talk</span></a>
+        <button class="icon-btn burger" id="burger" type="button" aria-expanded="false" aria-controls="mobileMenu" data-i18n-attr="aria-label:ui.menu" aria-label="Open menu"><span></span><span></span></button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile menu -->
+  <div class="mobile-menu" id="mobileMenu" hidden>
+    <nav class="mobile-menu__nav" aria-label="Mobile">
+      <a href="#home" style="--i:0"><small>01</small><span data-i18n="nav.home">Home</span></a>
+      <a href="#about" style="--i:1"><small>02</small><span data-i18n="nav.about">About</span></a>
+      <a href="#works" style="--i:2"><small>03</small><span data-i18n="nav.works">Works</span></a>
+      <a href="#contact" style="--i:3"><small>04</small><span data-i18n="nav.contact">Contact</span></a>
+    </nav>
+  </div>
+
+  <main>
+    <!-- ============ HERO / BENTO ============ -->
+    <section class="section hero" id="home">
+      <div class="container bento bento--hero" data-glow>
+
+        <article class="card card--profile" data-reveal data-tilt>
+          <div class="profile__photo">
+            <img src="https://avatars.githubusercontent.com/u/108486488?v=4" alt="Sayka's avatar" width="220" height="220" decoding="async">
+            <span class="status" id="status"><i></i><span data-i18n="hero.status">Open to collabs</span></span>
+          </div>
+          <div class="profile__info">
+            <p class="kicker" data-i18n="hero.kicker">Developer</p>
+            <h1 class="profile__name">Sayka<span class="accent-text">.</span></h1>
+            <p class="profile__text"><span data-i18n="hero.build">I build</span> <span class="typed" id="typed">TUI tools</span><span class="caret" aria-hidden="true"></span></p>
+            <ul class="profile__meta">
+              <li><svg class="ico"><use href="#i-pin"/></svg><span data-i18n="hero.location">Ukraine</span></li>
+              <li><svg class="ico"><use href="#i-case"/></svg>MiraiLab Inc.</li>
+            </ul>
+          </div>
+          <a href="#about" class="arrow-btn arrow-btn--corner" data-i18n-attr="aria-label:nav.about" aria-label="About"><svg><use href="#i-arrow"/></svg></a>
+        </article>
+
+        <div class="card card--marquee" data-reveal aria-hidden="true">
+          <div class="marquee" id="heroMarquee">
+            <div class="marquee__track"></div>
+          </div>
+        </div>
+
+        <a href="#about" class="card card--cred" data-reveal data-tilt data-cursor="About">
+          <div class="card__visual">
+            <svg class="signature" viewBox="0 0 220 110" fill="none" aria-hidden="true">
+              <path pathLength="1" d="M18 64c14-30 52-44 46-22-5 18-40 30-36 44 3 10 28 2 38-12 6-9 8-20 14-19 6 2-4 22 2 24 6 1 10-18 16-20 5-1 2 18 8 18 6 0 8-26 16-40 4-7 9-4 6 6l-8 34c4-10 12-18 18-18 4 0 3 8 7 9 5 0 9-11 15-11 7 0 2 14 10 14 5 0 10-6 14-10"/>
+              <path pathLength="1" class="signature__under" d="M30 96c46-8 104-12 172-6"/>
+            </svg>
+          </div>
+          <div class="card__foot">
+            <div>
+              <p class="kicker" data-i18n="cred.kicker">More about me</p>
+              <h2 class="card__title" data-i18n="cred.title">Credentials</h2>
+            </div>
+            <span class="arrow-btn"><svg><use href="#i-arrow"/></svg></span>
+          </div>
+        </a>
+
+        <a href="#works" class="card card--proj" data-reveal data-tilt data-cursor="Works">
+          <div class="card__visual">
+            <span class="proj__bg" data-i18n="proj.bg">MY WORKS</span>
+            <div class="mini-window">
+              <div class="mini-window__bar"><i></i><i></i><i></i><span class="mini-window__title">termidb</span></div>
+              <div class="mini-window__screens">
+                <div class="screen screen--term is-active" data-title="termidb">
+                  <p><b>$</b> termidb</p>
+                  <p class="dim">┌ tables ─────</p>
+                  <p class="dim">│ users <em>●</em></p>
+                  <p class="dim">│ orders <em>●</em></p>
+                  <p class="dim">└ logs <em class="blink">●</em></p>
+                </div>
+                <div class="screen screen--grid" data-title="anilink">
+                  <i></i><i></i><i></i><i></i><i></i><i></i>
+                </div>
+                <div class="screen screen--json" data-title="sora-api">
+                  <p>{</p>
+                  <p>&nbsp;"anime": <s>"…"</s>,</p>
+                  <p>&nbsp;"episode": <u>12</u>,</p>
+                  <p>&nbsp;"similarity": <u>.97</u></p>
+                  <p>}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card__foot">
+            <div>
+              <p class="kicker" data-i18n="proj.kicker">Showcase</p>
+              <h2 class="card__title" data-i18n="proj.title">Projects</h2>
+            </div>
+            <span class="arrow-btn"><svg><use href="#i-arrow"/></svg></span>
+          </div>
+        </a>
+
+        <a href="#stack" class="card card--stack" data-reveal data-tilt data-cursor="Stack">
+          <div class="card__visual">
+            <svg class="shapes" viewBox="0 0 120 90" aria-hidden="true">
+              <circle class="shape shape--1" cx="26" cy="22" r="14"/>
+              <path class="shape shape--2" d="M10 84 46 40v44Z"/>
+              <path class="shape shape--3" d="M56 8h22a20 20 0 0 1 0 40H56Z"/>
+              <path class="shape shape--4" d="M56 46h28a19 19 0 0 1 0 38H56Z"/>
+              <circle class="shape shape--5" cx="80" cy="64" r="18"/>
+            </svg>
+          </div>
+          <div class="card__foot">
+            <div>
+              <p class="kicker" data-i18n="stack.kicker">Toolbox</p>
+              <h2 class="card__title" data-i18n="stack.title">Tech Stack</h2>
+            </div>
+            <span class="arrow-btn"><svg><use href="#i-arrow"/></svg></span>
+          </div>
+        </a>
+
+        <article class="card card--services" data-reveal data-tilt>
+          <div class="card__visual services">
+            <span class="service" tabindex="0"><svg><use href="#i-terminal"/></svg><span class="tip" data-i18n="svc.tui">TUI &amp; CLI tools</span></span>
+            <span class="service" tabindex="0"><svg><use href="#i-bot"/></svg><span class="tip" data-i18n="svc.bots">Bots</span></span>
+            <span class="service" tabindex="0"><svg><use href="#i-code"/></svg><span class="tip" data-i18n="svc.web">Web apps</span></span>
+            <span class="service" tabindex="0"><svg><use href="#i-server"/></svg><span class="tip" data-i18n="svc.api">REST APIs</span></span>
+          </div>
+          <div class="card__foot">
+            <div>
+              <p class="kicker" data-i18n="services.kicker">Specialization</p>
+              <h2 class="card__title" data-i18n="services.title">Services Offering</h2>
+            </div>
+            <a href="#services" class="arrow-btn" data-i18n-attr="aria-label:services.title" aria-label="Services"><svg><use href="#i-arrow"/></svg></a>
+          </div>
+        </article>
+
+        <article class="card card--profiles" data-reveal data-tilt>
+          <div class="card__visual socials" id="heroSocials">
+            <a class="social magnetic" href="https://github.com/saykachi" target="_blank" rel="noopener" aria-label="GitHub" data-cursor="GitHub"><svg><use href="#i-github"/></svg></a>
+            <button class="social magnetic" type="button" id="copyLink" data-i18n-attr="aria-label:ui.copy" aria-label="Copy link" data-cursor="Copy"><svg><use href="#i-link"/></svg></button>
+          </div>
+          <div class="card__foot">
+            <div>
+              <p class="kicker" data-i18n="profiles.kicker">Stay with me</p>
+              <h2 class="card__title" data-i18n="profiles.title">Profiles</h2>
+            </div>
+            <a href="#contact" class="arrow-btn" data-i18n-attr="aria-label:nav.contact" aria-label="Contact"><svg><use href="#i-arrow"/></svg></a>
+          </div>
+        </article>
+
+        <article class="card card--stats" data-reveal data-tilt>
+          <div class="stat">
+            <b class="stat__num" data-count="years" data-pad="2">04</b>
+            <span class="stat__label" data-i18n-html="stats.years">Years on<br>GitHub</span>
+          </div>
+          <div class="stat">
+            <b class="stat__num" data-count="repos" data-prefix="+">+26</b>
+            <span class="stat__label" data-i18n-html="stats.repos">Public<br>repos</span>
+          </div>
+          <div class="stat">
+            <b class="stat__num" data-count="followers" data-prefix="+">+34</b>
+            <span class="stat__label" data-i18n-html="stats.followers">GitHub<br>followers</span>
+          </div>
+        </article>
+
+        <a href="#contact" class="card card--cta" data-reveal data-tilt data-cursor="Hi!">
+          <span class="cta__spark" aria-hidden="true"><svg><use href="#i-sparkle"/></svg></span>
+          <h2 class="cta__title" data-i18n-html="cta.title">Let's<br>work <span class="grad">together.</span></h2>
+          <span class="arrow-btn"><svg><use href="#i-arrow"/></svg></span>
+        </a>
+      </div>
+    </section>
+
+    <!-- ============ ABOUT ============ -->
+    <section class="section" id="about">
+      <div class="container">
+        <header class="section-head">
+          <p class="kicker" data-reveal><span class="section-num">01</span> <span data-i18n="about.kicker">About</span></p>
+          <h2 class="section-title" data-split data-i18n-html="about.title">Code that feels <em>good</em> to use.</h2>
+        </header>
+
+        <div class="bento bento--about" data-glow>
+          <article class="card card--bio" data-reveal data-tilt>
+            <p class="kicker" data-i18n="about.bioKicker">Hello there</p>
+            <p class="bio__lead" data-i18n="about.p1">Hey! I'm Sayka — a developer from Ukraine, currently at MiraiLab Inc.</p>
+            <p class="bio__text" data-i18n="about.p2">Lately I've been focused on TermiDB, a TUI database client &amp; monitor, and AniLink, an open-source client for AniLiberty.</p>
+            <a class="link-arrow" href="https://github.com/saykachi" target="_blank" rel="noopener"><span data-i18n="about.github">Follow on GitHub</span><svg><use href="#i-external"/></svg></a>
+          </article>
+
+          <article class="card card--terminal" data-reveal id="terminal">
+            <div class="term__bar">
+              <i></i><i></i><i></i>
+              <span class="term__title">sayka@portfolio: ~</span>
+              <span class="term__hint" data-i18n-html="term.hint">press <kbd>/</kbd> to focus</span>
+            </div>
+            <div class="term__body" id="termBody">
+              <div class="term__out" id="termOut" aria-live="polite"></div>
+              <label class="term__line">
+                <span class="term__prompt">➜ <b>~</b></span>
+                <input id="termIn" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-attr="aria-label:term.input" aria-label="Terminal command">
+              </label>
+            </div>
+          </article>
+
+          <article class="card card--techstack" data-reveal id="stack">
+            <div class="card__head">
+              <p class="kicker" data-i18n="about.stackKicker">Stack</p>
+              <h3 class="card__title" data-i18n="about.stackTitle">Languages &amp; tools I reach for</h3>
+            </div>
+            <div class="pills">
+              <div class="marquee marquee--pills"><div class="marquee__track" data-pills="0"></div></div>
+              <div class="marquee marquee--pills marquee--reverse"><div class="marquee__track" data-pills="1"></div></div>
+            </div>
+          </article>
+
+          <article class="card card--svc" data-reveal data-tilt id="services">
+            <span class="svc__icon"><svg><use href="#i-terminal"/></svg></span>
+            <h3 class="card__title" data-i18n="svc.tui">TUI &amp; CLI tools</h3>
+            <p class="card__text" data-i18n="svc.tuiText">Keyboard-first tools for the terminal: database clients, monitors and handy CLIs.</p>
+          </article>
+          <article class="card card--svc" data-reveal data-tilt>
+            <span class="svc__icon"><svg><use href="#i-bot"/></svg></span>
+            <h3 class="card__title" data-i18n="svc.bots">Bots</h3>
+            <p class="card__text" data-i18n="svc.botsText">Discord and chat bots with moderation, automation and a bit of personality.</p>
+          </article>
+          <article class="card card--svc" data-reveal data-tilt>
+            <span class="svc__icon"><svg><use href="#i-code"/></svg></span>
+            <h3 class="card__title" data-i18n="svc.web">Web apps</h3>
+            <p class="card__text" data-i18n="svc.webText">Fast, minimal interfaces with TypeScript and Vue, shipped to Vercel.</p>
+          </article>
+          <article class="card card--svc" data-reveal data-tilt>
+            <span class="svc__icon"><svg><use href="#i-server"/></svg></span>
+            <h3 class="card__title" data-i18n="svc.api">REST APIs</h3>
+            <p class="card__text" data-i18n="svc.apiText">Small, focused REST APIs in Python that wrap other services into something simple.</p>
+          </article>
+
+          <article class="card card--timeline" data-reveal>
+            <div class="card__head">
+              <p class="kicker" data-i18n="about.journeyKicker">Journey</p>
+              <h3 class="card__title" data-i18n="about.journeyTitle">The path so far</h3>
+            </div>
+            <ol class="timeline" id="timeline"></ol>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ WORKS ============ -->
+    <section class="section" id="works">
+      <div class="container">
+        <header class="section-head section-head--row">
+          <div class="section-head__main">
+            <p class="kicker" data-reveal><span class="section-num">02</span> <span data-i18n="works.kicker">Selected works</span></p>
+            <h2 class="section-title" data-split data-i18n-html="works.title">Things I've <em>built</em>.</h2>
+          </div>
+          <div class="filters" role="group" data-i18n-attr="aria-label:works.filter" aria-label="Filter projects" data-reveal>
+            <span class="filters__indicator" aria-hidden="true"></span>
+            <button type="button" class="filter is-active" data-filter="all" aria-pressed="true" data-i18n="works.all">All</button>
+            <button type="button" class="filter" data-filter="tools" aria-pressed="false" data-i18n="works.tools">Tools</button>
+            <button type="button" class="filter" data-filter="web" aria-pressed="false" data-i18n="works.web">Web</button>
+            <button type="button" class="filter" data-filter="bots" aria-pressed="false" data-i18n="works.bots">Bots</button>
+            <button type="button" class="filter" data-filter="api" aria-pressed="false" data-i18n="works.api">API</button>
+          </div>
+        </header>
+
+        <div class="works-grid" id="worksGrid" data-glow></div>
+        <noscript><p class="noscript">Projects: <a href="https://github.com/saykachi?tab=repositories">github.com/saykachi</a></p></noscript>
+      </div>
+    </section>
+
+    <!-- ============ CONTACT ============ -->
+    <section class="section" id="contact">
+      <div class="container">
+        <div class="card card--contact" data-reveal>
+          <div class="contact__main">
+            <p class="kicker"><span class="section-num">03</span> <span data-i18n="contact.kicker">Contact</span></p>
+            <h2 class="contact__title" data-split data-i18n-html="contact.title">Have an idea?<br>Let's make it <span class="grad">real.</span></h2>
+            <p class="contact__text" data-i18n="contact.text">I'm open to collaborations, freelance gigs and fun side projects. Drop me a line on any of the platforms below.</p>
+            <ul class="contact__links" id="contactLinks"></ul>
+          </div>
+
+          <a class="orb-btn magnetic" id="sayHi" href="https://github.com/saykachi" target="_blank" rel="noopener" data-cursor="Go!">
+            <svg class="orb-btn__ring" viewBox="0 0 200 200" aria-hidden="true">
+              <defs><path id="ringPath" d="M100 100m-78 0a78 78 0 1 1 156 0a78 78 0 1 1-156 0"/></defs>
+              <text><textPath href="#ringPath" id="ringText" textLength="486" lengthAdjust="spacing">OPEN TO NEW PROJECTS • LET'S TALK • OPEN TO NEW PROJECTS • LET'S TALK • </textPath></text>
+            </svg>
+            <span class="orb-btn__core"><span data-i18n="contact.btn">Say hi</span><svg><use href="#i-external"/></svg></span>
+          </a>
+
+          <div class="contact__meta">
+            <div><span class="kicker" data-i18n="contact.time">Local time</span><b id="clock">--:--:--</b></div>
+            <div><span class="kicker" data-i18n="contact.based">Based in</span><b data-i18n="hero.location">Ukraine</b></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <a href="#home" class="logo logo--lg">sayka<span class="accent-text">.</span></a>
+      <nav class="footer__nav" aria-label="Footer">
+        <a href="#home" data-i18n="nav.home">Home</a>
+        <a href="#about" data-i18n="nav.about">About</a>
+        <a href="#works" data-i18n="nav.works">Works</a>
+        <a href="#contact" data-i18n="nav.contact">Contact</a>
+      </nav>
+      <p class="footer__copy">© <span id="year">2026</span> Sayka · <span data-i18n="footer.made">Designed &amp; built from scratch</span></p>
+      <button class="icon-btn to-top magnetic" type="button" id="toTop" data-i18n-attr="aria-label:footer.top" aria-label="Back to top"><svg><use href="#i-up"/></svg></button>
+    </div>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/data.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
