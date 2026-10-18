@@ -1,15 +1,15 @@
 (() => {
   "use strict";
 
-  const { SITE, PROJECTS, TIMELINE, I18N, LANG_COLORS } = window;
+  const { SITE, PROJECTS, TIMELINE, SERVICES, FEED_FALLBACK, I18N, LANG_COLORS, Sky } = window;
   const $ = (s, c = document) => c.querySelector(s);
   const $$ = (s, c = document) => [...c.querySelectorAll(s)];
   const root = document.documentElement;
-  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const finePointer = matchMedia("(hover: hover) and (pointer: fine)").matches;
+  const sysReduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const isMac = /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const icon = (id) => `<svg><use href="#i-${id}"/></svg>`;
-  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const icon = (id, cls) => `<svg${cls ? ` class="${cls}"` : ""}><use href="#i-${id}"/></svg>`;
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
   // Storage can throw in private mode / sandboxed frames.
   const store = (area) => ({
@@ -19,20 +19,70 @@
   const local = store("localStorage");
   const session = store("sessionStorage");
 
+  const VIEWS = ["home", "projects", "stack", "journey", "terminal", "contact"];
+  const SKY_MODES = ["auto", "day", "sunset", "night"];
+  const CAT_ICON = { tools: "terminal", web: "code", bots: "bot", api: "server" };
+  const VIEW_ICON = { home: "home", projects: "grid", stack: "layers", journey: "route", terminal: "terminal", contact: "mail" };
+  const SKY_ICON = { auto: "auto", day: "sun", sunset: "sunset", night: "moon" };
+
   /* ======================================================================
-     i18n
+     State
      ====================================================================== */
   let lang = local.get("lang") || ((navigator.language || "").toLowerCase().startsWith("ru") ? "ru" : "en");
   if (!I18N[lang]) lang = "en";
-  const langListeners = [];
 
+  const yearsSince = (date) => Math.max(1, Math.floor((Date.now() - new Date(date)) / (365.25 * 864e5)));
+  const state = {
+    view: null,
+    filter: "all",
+    sky: SKY_MODES.includes(local.get("sky")) ? local.get("sky") : "auto",
+    motion: local.get("motion") !== "off",
+    accent: Math.max(0, SITE.accents.findIndex((a) => a.name === local.get("accent"))),
+    gh: {
+      live: false,
+      loaded: false,
+      repos: SITE.fallback.repos,
+      followers: SITE.fallback.followers,
+      following: SITE.fallback.following,
+      stars: SITE.fallback.stars,
+      years: yearsSince(SITE.joined),
+      langs: { ...SITE.fallback.langs },
+      starsMap: null,
+      events: null
+    }
+  };
+  const motionOK = () => state.motion && !sysReduced;
+
+  /* ======================================================================
+     i18n
+     ====================================================================== */
   function t(key, vars) {
     let s = I18N[lang][key] ?? I18N.en[key] ?? key;
     if (vars && typeof s === "string") s = s.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
     return s;
   }
 
-  function applyLang() {
+  function plural(n, forms) {
+    if (forms.length === 3) {
+      const a = n % 10, b = n % 100;
+      return forms[a === 1 && b !== 11 ? 0 : a >= 2 && a <= 4 && (b < 12 || b > 14) ? 1 : 2];
+    }
+    return n === 1 ? forms[0] : forms[1];
+  }
+
+  const num = (n) => Number(n).toLocaleString(lang === "ru" ? "ru-RU" : "en-US");
+
+  function relTime(date) {
+    const rtf = new Intl.RelativeTimeFormat(lang, { numeric: "auto" });
+    const diff = (new Date(date) - Date.now()) / 1000;
+    const units = [["year", 31536000], ["month", 2592000], ["week", 604800], ["day", 86400], ["hour", 3600], ["minute", 60]];
+    for (const [unit, sec] of units) {
+      if (Math.abs(diff) >= sec || unit === "minute") return rtf.format(Math.round(diff / sec), unit);
+    }
+    return "";
+  }
+
+  function applyStatic() {
     root.lang = lang;
     $$("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
     $$("[data-i18n-html]").forEach((el) => { el.innerHTML = t(el.dataset.i18nHtml); });
@@ -42,131 +92,20 @@
         el.setAttribute(attr, t(key));
       });
     });
-    $("#langBtn").textContent = lang === "en" ? "RU" : "EN";
-    langListeners.forEach((fn) => fn());
+    $$("[data-tip-key]").forEach((el) => { el.dataset.tip = t(el.dataset.tipKey); });
+    const joined = new Date(SITE.joined);
+    $("#sinceBadge").textContent = t("profile.since", {
+      date: new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric" }).format(joined),
+      year: joined.getFullYear()
+    });
   }
 
   function setLang(next) {
     if (!I18N[next] || next === lang) return;
     lang = next;
     local.set("lang", lang);
-    applyLang();
-  }
-
-  /* ======================================================================
-     Word splitting for headings
-     ====================================================================== */
-  function splitWords(el) {
-    const nodes = [...el.childNodes];
-    el.textContent = "";
-    let i = 0;
-    const wrap = (node) => {
-      const w = document.createElement("span");
-      const inner = document.createElement("span");
-      w.className = "w";
-      inner.className = "w__i";
-      inner.style.setProperty("--i", i++);
-      inner.append(node);
-      w.append(inner);
-      return w;
-    };
-    for (const n of nodes) {
-      if (n.nodeType === Node.TEXT_NODE) {
-        n.textContent.split(/(\s+)/).forEach((part) => {
-          if (!part) return;
-          el.append(/^\s+$/.test(part) ? document.createTextNode(" ") : wrap(document.createTextNode(part)));
-        });
-      } else if (n.nodeName === "BR") {
-        el.append(n);
-      } else {
-        el.append(wrap(n));
-      }
-    }
-  }
-
-  function resplit() {
-    $$("[data-split]").forEach((el) => {
-      splitWords(el);
-      if (el.classList.contains("is-in")) {
-        el.classList.remove("is-in");
-        void el.offsetWidth;
-        el.classList.add("is-in");
-      }
-    });
-  }
-
-  /* ======================================================================
-     Reveal on scroll
-     ====================================================================== */
-  let revealReady = false;
-  const io = new IntersectionObserver((entries) => {
-    entries.filter((e) => e.isIntersecting).forEach((e, idx) => {
-      e.target.style.setProperty("--d", `${idx * 80}ms`);
-      e.target.classList.add("is-in");
-      io.unobserve(e.target);
-    });
-  }, { threshold: 0.12, rootMargin: "0px 0px -6% 0px" });
-
-  function observeReveals(scope = document) {
-    if (!revealReady) return;
-    $$("[data-reveal]:not(.is-in), [data-split]:not(.is-in)", scope).forEach((el) => {
-      if (reduced) el.classList.add("is-in");
-      else io.observe(el);
-    });
-  }
-
-  /* ======================================================================
-     Preloader
-     ====================================================================== */
-  function preload(done) {
-    const pre = $(".preloader");
-    const finish = () => {
-      root.classList.add("is-loaded");
-      setTimeout(() => pre && pre.remove(), 1200);
-      setTimeout(done, reduced ? 0 : 380);
-    };
-    if (!pre || reduced) return finish();
-
-    const count = $("#preCount");
-    const bar = $(".preloader__bar i");
-    const start = performance.now();
-    const dur = 1100;
-    let loaded = document.readyState === "complete";
-    window.addEventListener("load", () => { loaded = true; }, { once: true });
-
-    const tick = (now) => {
-      const ready = loaded || now - start > 3500;
-      let p = Math.min((now - start) / dur, 1);
-      if (!ready) p = Math.min(p, 0.9);
-      const eased = 1 - Math.pow(1 - p, 3);
-      count.textContent = Math.round(eased * 100);
-      bar.style.setProperty("--p", eased.toFixed(3));
-      if (p < 1 || !ready) requestAnimationFrame(tick);
-      else setTimeout(finish, 150);
-    };
-    requestAnimationFrame(tick);
-  }
-
-  /* ======================================================================
-     Accent colour
-     ====================================================================== */
-  let accentIdx = Math.max(0, SITE.accents.findIndex((a) => a.name === local.get("accent")));
-
-  function setAccent(i, from) {
-    accentIdx = (i + SITE.accents.length) % SITE.accents.length;
-    const a = SITE.accents[accentIdx];
-    root.style.setProperty("--accent", a.a);
-    root.style.setProperty("--accent-2", a.b);
-    local.set("accent", a.name);
-    if (from && !reduced) {
-      const r = from.getBoundingClientRect();
-      const flash = document.createElement("div");
-      flash.className = "accent-flash";
-      flash.style.setProperty("--fx", `${r.left + r.width / 2}px`);
-      flash.style.setProperty("--fy", `${r.top + r.height / 2}px`);
-      flash.addEventListener("animationend", () => flash.remove());
-      document.body.append(flash);
-    }
+    applyStatic();
+    renderDynamic();
   }
 
   /* ======================================================================
@@ -181,226 +120,491 @@
     toastTimer = setTimeout(() => el.classList.remove("is-visible"), 2200);
   }
 
+  async function copyLink() {
+    const url = location.href;
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = url;
+      ta.style.cssText = "position:fixed;opacity:0";
+      document.body.append(ta);
+      ta.select();
+      try { document.execCommand("copy"); } catch { /* ignore */ }
+      ta.remove();
+    }
+    toast(t("ui.copied"));
+  }
+
   /* ======================================================================
-     Pointer: cursor, background spotlight, card glow & tilt
+     Preferences: accent, sky, motion
+     ====================================================================== */
+  function setAccent(i, announce) {
+    state.accent = (i + SITE.accents.length) % SITE.accents.length;
+    const a = SITE.accents[state.accent];
+    root.style.setProperty("--accent", a.a);
+    root.style.setProperty("--accent-2", a.b);
+    local.set("accent", a.name);
+    $$(".swatch").forEach((s, idx) => s.setAttribute("aria-checked", String(idx === state.accent)));
+    if (announce) toast(t("ui.accentSet", { name: a.name }));
+  }
+
+  let sky = null;
+  const resolveSky = (m) => (m === "auto" ? Sky.autoMode() : m);
+
+  function setSky(mode, announce) {
+    if (!SKY_MODES.includes(mode)) return;
+    state.sky = mode;
+    local.set("sky", mode);
+    if (sky) sky.setMode(resolveSky(mode));
+    $$("[data-sky]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.sky === mode)));
+    if (announce) toast(t("ui.skySet", { name: t(`sky.${mode}`) }));
+  }
+
+  function setMotion(on, announce) {
+    state.motion = on;
+    local.set("motion", on ? "on" : "off");
+    root.classList.toggle("reduce-motion", !on);
+    $("#setMotion").setAttribute("aria-checked", String(on));
+    if (sky) sky.setReduced(!motionOK());
+    startTyped();
+    if (announce) toast(t(on ? "ui.motionOn" : "ui.motionOff"));
+  }
+
+  /* ======================================================================
+     Pointer: ambient light + spotlight cards
      ====================================================================== */
   function initPointer() {
-    const grid = $(".bg__grid");
-    const orb = $(".bg__orb--1");
-    const dot = $(".cursor");
-    const ring = $(".cursor-ring");
-    const label = $(".cursor-ring__label");
-    const customCursor = finePointer && !reduced;
-    const allowTilt = finePointer && !reduced;
-
     let last = null;
     let raf = 0;
-    let tilted = null;
-    let mx = innerWidth / 2, my = innerHeight / 2, rx = mx, ry = my, down = false;
-
-    const resetTilt = (card) => {
-      card.classList.remove("is-tilting");
-      card.style.transform = "";
-    };
-
     const frame = () => {
       raf = 0;
-      const e = last;
-      grid.style.setProperty("--cx", `${e.clientX}px`);
-      grid.style.setProperty("--cy", `${e.clientY}px`);
-      orb.style.setProperty("--ox", `${(e.clientX / innerWidth - 0.5) * 140}px`);
-      orb.style.setProperty("--oy", `${(e.clientY / innerHeight - 0.5) * 140}px`);
-
-      const target = e.target instanceof Element ? e.target : null;
-      if (!target) return;
-
-      // Spotlight: light up every card of the hovered grid relative to the pointer.
-      const host = target.closest("[data-glow]");
-      const single = target.closest(".card");
-      const cards = host ? host.querySelectorAll(":scope > .card") : single ? [single] : [];
-      for (const c of cards) {
-        const r = c.getBoundingClientRect();
-        c.style.setProperty("--mx", `${e.clientX - r.left}px`);
-        c.style.setProperty("--my", `${e.clientY - r.top}px`);
-      }
-
-      if (!allowTilt) return;
-      const card = target.closest("[data-tilt]");
-      if (tilted && tilted !== card) resetTilt(tilted);
-      tilted = card;
-      if (card) {
-        const r = card.getBoundingClientRect();
-        const px = (e.clientX - r.left) / r.width - 0.5;
-        const py = (e.clientY - r.top) / r.height - 0.5;
-        const max = Math.min(7, 2600 / r.width);
-        card.classList.add("is-tilting");
-        card.style.transform = `perspective(1000px) rotateX(${(-py * max).toFixed(2)}deg) rotateY(${(px * max).toFixed(2)}deg)`;
+      root.style.setProperty("--ax", `${last.clientX}px`);
+      root.style.setProperty("--ay", `${last.clientY}px`);
+      const spot = last.target instanceof Element ? last.target.closest("[data-spot]") : null;
+      if (spot) {
+        const r = spot.getBoundingClientRect();
+        spot.style.setProperty("--mx", `${last.clientX - r.left}px`);
+        spot.style.setProperty("--my", `${last.clientY - r.top}px`);
       }
     };
-
     addEventListener("pointermove", (e) => {
       last = e;
-      mx = e.clientX;
-      my = e.clientY;
-      if (customCursor) {
-        root.classList.add("cursor-visible");
-        dot.style.transform = `translate(${mx}px, ${my}px)`;
-      }
       if (!raf) raf = requestAnimationFrame(frame);
     }, { passive: true });
-
-    document.addEventListener("mouseout", (e) => {
-      if (e.relatedTarget) return;
-      root.classList.remove("cursor-visible");
-      if (tilted) { resetTilt(tilted); tilted = null; }
-    });
-
-    if (!customCursor) return;
-    root.classList.add("has-cursor");
-
-    addEventListener("pointerdown", () => { down = true; });
-    addEventListener("pointerup", () => { down = false; });
-
-    document.addEventListener("pointerover", (e) => {
-      const el = e.target instanceof Element ? e.target.closest("a, button, input, [data-cursor], .service, .pill, .stat") : null;
-      ring.classList.remove("is-hover", "is-label", "is-text");
-      if (!el) return;
-      if (el.matches("input")) return ring.classList.add("is-text");
-      if (el.dataset.cursor) {
-        label.textContent = el.dataset.cursor;
-        ring.classList.add("is-label");
-      } else {
-        ring.classList.add("is-hover");
-      }
-    });
-
-    const loop = () => {
-      rx += (mx - rx) * 0.18;
-      ry += (my - ry) * 0.18;
-      ring.style.transform = `translate(${rx.toFixed(1)}px, ${ry.toFixed(1)}px) scale(${down ? 0.8 : 1})`;
-      requestAnimationFrame(loop);
-    };
-    loop();
-  }
-
-  function initMagnetic() {
-    if (!finePointer || reduced) return;
-    $$(".magnetic").forEach((el) => {
-      const strength = el.classList.contains("orb-btn") ? 0.35 : 0.3;
-      el.addEventListener("pointermove", (e) => {
-        const r = el.getBoundingClientRect();
-        const x = e.clientX - r.left - r.width / 2;
-        const y = e.clientY - r.top - r.height / 2;
-        el.style.transform = `translate(${x * strength}px, ${y * strength}px)`;
-      });
-      el.addEventListener("pointerleave", () => { el.style.transform = ""; });
-    });
   }
 
   /* ======================================================================
-     Header: scroll state, nav indicator, progress, mobile menu
+     Counters
      ====================================================================== */
-  const header = $("#header");
-  let menuOpen = false;
+  const counted = new WeakSet();
+  const countIO = new IntersectionObserver((entries) => {
+    entries.forEach((e) => {
+      if (!e.isIntersecting) return;
+      counted.add(e.target);
+      animateCount(e.target);
+      countIO.unobserve(e.target);
+    });
+  }, { threshold: 0.3 });
 
-  function moveIndicator(ind, el) {
-    if (!ind || !el) return;
-    ind.style.setProperty("--x", `${el.offsetLeft}px`);
-    ind.style.setProperty("--y", `${el.offsetTop}px`);
-    ind.style.setProperty("--w", `${el.offsetWidth}px`);
-    ind.style.setProperty("--h", `${el.offsetHeight}px`);
+  function animateCount(el) {
+    const to = Number(state.gh[el.dataset.count]) || 0;
+    const from = Number(el.dataset.value) || 0;
+    el.dataset.value = to;
+    if (!motionOK() || from === to) { el.textContent = num(to); return; }
+    const start = performance.now();
+    const dur = 1400;
+    const tick = (now) => {
+      const p = Math.min((now - start) / dur, 1);
+      const e = p === 1 ? 1 : 1 - Math.pow(2, -10 * p);
+      el.textContent = num(Math.round(from + (to - from) * e));
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
   }
 
-  function initHeader() {
-    const progress = $(".progress");
-    const nav = $(".nav");
-    const navInd = $(".nav__indicator");
-    const links = $$(".nav__link");
-    let lastY = scrollY;
-    let ticking = false;
-
-    const onScroll = () => {
-      ticking = false;
-      const y = scrollY;
-      header.classList.toggle("is-scrolled", y > 20);
-      if (Math.abs(y - lastY) > 4) {
-        header.classList.toggle("is-hidden", y > lastY && y > 320 && !menuOpen && !header.contains(document.activeElement));
-        lastY = y;
-      }
-      const max = document.documentElement.scrollHeight - innerHeight;
-      progress.style.setProperty("--progress", max > 0 ? (y / max).toFixed(4) : 0);
-    };
-    addEventListener("scroll", () => {
-      if (!ticking) { ticking = true; requestAnimationFrame(onScroll); }
-    }, { passive: true });
-    header.addEventListener("focusin", () => header.classList.remove("is-hidden"));
-    onScroll();
-
-    // Active section
-    const active = () => $(".nav__link.is-active");
-    const setActive = (id) => {
-      links.forEach((l) => {
-        const on = l.getAttribute("href") === `#${id}`;
-        l.classList.toggle("is-active", on);
-        if (on) l.setAttribute("aria-current", "true");
-        else l.removeAttribute("aria-current");
-      });
-      if (!nav.matches(":hover")) moveIndicator(navInd, active());
-    };
-    const sectionIO = new IntersectionObserver((entries) => {
-      entries.forEach((e) => { if (e.isIntersecting) setActive(e.target.id); });
-    }, { rootMargin: "-45% 0px -50% 0px" });
-    ["home", "about", "works", "contact"].forEach((id) => sectionIO.observe(document.getElementById(id)));
-
-    links.forEach((l) => l.addEventListener("pointerenter", () => moveIndicator(navInd, l)));
-    nav.addEventListener("pointerleave", () => moveIndicator(navInd, active()));
-
-    const syncIndicators = () => {
-      moveIndicator(navInd, active());
-      moveIndicator($(".filters__indicator"), $(".filter.is-active"));
-    };
-    addEventListener("resize", syncIndicators);
-    langListeners.push(() => requestAnimationFrame(syncIndicators));
-    if (document.fonts) document.fonts.ready.then(syncIndicators);
-    syncIndicators();
-
-    // Mobile menu
-    const burger = $("#burger");
-    const menu = $("#mobileMenu");
-    const toggleMenu = (open = !menuOpen) => {
-      menuOpen = open;
-      burger.setAttribute("aria-expanded", String(open));
-      document.body.style.overflow = open ? "hidden" : "";
-      if (open) {
-        menu.hidden = false;
-        header.classList.remove("is-hidden");
-        requestAnimationFrame(() => requestAnimationFrame(() => menu.classList.add("is-open")));
-        setTimeout(() => { if (menuOpen) $("a", menu).focus({ preventScroll: true }); }, 300);
-      } else {
-        menu.classList.remove("is-open");
-        setTimeout(() => { if (!menuOpen) menu.hidden = true; }, reduced ? 0 : 700);
-      }
-    };
-    burger.addEventListener("click", () => toggleMenu());
-    $$("a", menu).forEach((a) => a.addEventListener("click", () => toggleMenu(false)));
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && menuOpen) {
-        toggleMenu(false);
-        burger.focus();
-      }
+  function initCounts() {
+    $$("[data-count]").forEach((el) => {
+      el.dataset.value = "0";
+      el.textContent = "0";
+      countIO.observe(el);
     });
-    addEventListener("resize", () => { if (menuOpen && innerWidth > 900) toggleMenu(false); });
+  }
+
+  const refreshCounts = () => $$("[data-count]").forEach((el) => { if (counted.has(el)) animateCount(el); });
+
+  /* ======================================================================
+     Tabs
+     ====================================================================== */
+  function makeTabs(el, onSelect) {
+    const ind = $(".tabs__ind", el);
+    const btns = $$('[role="tab"]', el);
+    const current = () => btns.find((b) => b.getAttribute("aria-selected") === "true") || btns[0];
+    const sync = () => {
+      const b = current();
+      if (!b || !b.offsetWidth) return;
+      ind.style.setProperty("--x", `${b.offsetLeft}px`);
+      ind.style.setProperty("--w", `${b.offsetWidth}px`);
+    };
+    const select = (b, focus) => {
+      btns.forEach((x) => {
+        const on = x === b;
+        x.setAttribute("aria-selected", String(on));
+        x.tabIndex = on ? 0 : -1;
+      });
+      sync();
+      if (focus) b.focus();
+      onSelect(b.dataset.tab);
+    };
+    btns.forEach((b) => b.addEventListener("click", () => {
+      if (b.getAttribute("aria-selected") !== "true") select(b);
+    }));
+    el.addEventListener("keydown", (e) => {
+      const i = btns.indexOf(document.activeElement);
+      if (i < 0) return;
+      const n = { ArrowRight: (i + 1) % btns.length, ArrowLeft: (i - 1 + btns.length) % btns.length, Home: 0, End: btns.length - 1 }[e.key];
+      if (n === undefined) return;
+      e.preventDefault();
+      select(btns[n], true);
+    });
+    return { sync, select };
   }
 
   /* ======================================================================
-     Hero widgets
+     Covers (small animated scenes for projects)
+     ====================================================================== */
+  const CHART = [42, 66, 50, 80, 58, 92, 70, 86, 62, 96, 74];
+
+  function coverHTML(p) {
+    let inner = "";
+    switch (p.cover) {
+      case "term":
+        inner = `<span class="v-term">${p.lines.map((l, i) => `<span class="ln${l.startsWith("$") ? " cmd" : ""}" style="--i:${i}">${esc(l)}</span>`).join("")}</span>`;
+        break;
+      case "grid":
+        inner = `<span class="v-grid">${Array.from({ length: 8 }, (_, i) => `<i style="--i:${i}"${i === 1 ? ' class="a"' : i === 6 ? ' class="b"' : ""}></i>`).join("")}</span>`;
+        break;
+      case "chat":
+        inner = `<span class="v-chat">${p.chat.map((m, i) => `<span style="--i:${i}">${esc(m)}</span>`).join("")}<span class="typing" style="--i:${p.chat.length}"><b></b><b></b><b></b></span></span>`;
+        break;
+      case "scan":
+        inner = `<span class="v-scan"><span class="v-scan__frame"></span><span class="v-scan__json">{<br>&nbsp;"anilist": <u>21</u>,<br>&nbsp;"episode": <u>12</u>,<br>&nbsp;"from": <s>"04:21"</s>,<br>&nbsp;"similarity": <u>0.97</u><br>}</span></span>`;
+        break;
+      case "chart":
+        inner = `<span class="v-chart">${CHART.map((h, i) => `<i style="--i:${i};--h:${h}%"></i>`).join("")}</span>`;
+        break;
+      case "links":
+        inner = `<span class="v-links"><span class="ava"></span>${[0, 1, 2, 3].map((i) => `<span style="--i:${i}"></span>`).join("")}</span>`;
+        break;
+      default:
+        break;
+    }
+    return `<span class="cover" style="--c:${p.color}">${inner}</span>`;
+  }
+
+  const projectStars = (p) => (state.gh.starsMap ? state.gh.starsMap[p.repo.toLowerCase()] : undefined);
+  const langHTML = (p) => `<span class="lang"><i style="--c:${p.lang ? LANG_COLORS[p.lang] || p.color : p.color}"></i>${esc(p.lang || p.tags[0])}</span>`;
+  const starsHTML = (p) => {
+    const n = projectStars(p);
+    return `<span class="stars" data-stars="${esc(p.repo)}"${n == null ? " hidden" : ""}>${icon("star")}<b>${n ?? 0}</b></span>`;
+  };
+
+  /* ======================================================================
+     Home: feed, featured
+     ====================================================================== */
+  const FEED_KIND = {
+    push: ["commit", "var(--accent)", "push"],
+    update: ["commit", "var(--accent)", "update"],
+    create: ["plus", "var(--green)", "create"],
+    branch: ["fork", "var(--green)", "create"],
+    tag: ["tag", "var(--pink)", "create"],
+    star: ["star", "var(--yellow)", "star"],
+    fork: ["fork", "var(--blue)", "fork"],
+    release: ["tag", "var(--pink)", "release"],
+    pr: ["pr", "var(--violet)", "pr"],
+    issue: ["issue", "var(--green)", "issue"],
+    comment: ["chat", "var(--text-2)", "comment"],
+    public: ["eye", "var(--blue)", "public"],
+    delete: ["minus", "var(--red)", "delete"],
+    other: ["sparkle", "var(--text-2)", "other"]
+  };
+
+  function mapEvent(ev) {
+    const full = ev.repo?.name || "";
+    const repo = full.startsWith(`${SITE.github}/`) ? full.slice(SITE.github.length + 1) : full;
+    const p = ev.payload || {};
+    const base = { repo, date: ev.created_at, url: `https://github.com/${full}` };
+    switch (ev.type) {
+      case "PushEvent": {
+        const n = p.distinct_size ?? p.size ?? (Array.isArray(p.commits) ? p.commits.length : null);
+        return { ...base, type: "push", n: n || null, url: `https://github.com/${full}/commits` };
+      }
+      case "CreateEvent":
+        return { ...base, type: p.ref_type === "repository" ? "create" : p.ref_type === "tag" ? "tag" : "branch", ref: p.ref };
+      case "WatchEvent": return { ...base, type: "star" };
+      case "ForkEvent": return { ...base, type: "fork", url: p.forkee?.html_url || base.url };
+      case "ReleaseEvent": return { ...base, type: "release", ref: p.release?.tag_name, url: p.release?.html_url || base.url };
+      case "PullRequestEvent":
+        return { ...base, type: "pr", action: p.pull_request?.merged ? "merged" : p.action === "closed" ? "closed" : "opened", url: p.pull_request?.html_url || base.url };
+      case "IssuesEvent": return { ...base, type: "issue", action: p.action === "closed" ? "closed" : "opened", url: p.issue?.html_url || base.url };
+      case "IssueCommentEvent":
+      case "CommitCommentEvent":
+      case "PullRequestReviewCommentEvent":
+        return { ...base, type: "comment", url: p.comment?.html_url || base.url };
+      case "PublicEvent": return { ...base, type: "public" };
+      case "DeleteEvent": return { ...base, type: "delete", ref: p.ref };
+      default: return { ...base, type: "other" };
+    }
+  }
+
+  // Collapse consecutive pushes to the same repository.
+  function mergeEvents(list) {
+    const out = [];
+    for (const ev of list) {
+      const prev = out[out.length - 1];
+      if (prev && ev.type === "push" && prev.type === "push" && prev.repo === ev.repo) {
+        prev.n = prev.n && ev.n ? prev.n + ev.n : prev.n || ev.n;
+        continue;
+      }
+      out.push({ ...ev });
+    }
+    return out;
+  }
+
+  function feedText(it) {
+    const repo = `<b>${esc(it.repo)}</b>`;
+    const ref = esc(it.ref || "");
+    switch (it.type) {
+      case "push":
+        return it.n ? t("feed.push", { n: `${it.n} ${plural(it.n, t("commits"))}`, repo }) : t("feed.pushNoCount", { repo });
+      case "pr":
+      case "issue":
+        return t(`feed.${it.type}`, { action: t(`feed.${it.action}`), repo });
+      default:
+        return t(`feed.${it.type}`, { repo, ref });
+    }
+  }
+
+  function renderFeed() {
+    const list = $("#feed");
+    const note = $("#feedNote");
+    if (!state.gh.loaded) {
+      list.innerHTML = Array.from({ length: 5 }, () => '<li class="skeleton"></li>').join("");
+      note.textContent = "";
+      return;
+    }
+    const live = Array.isArray(state.gh.events) && state.gh.events.length > 0;
+    const items = (live ? state.gh.events : FEED_FALLBACK.map((f) => ({ ...f, url: `https://github.com/${SITE.github}/${f.repo}` }))).slice(0, 8);
+    list.className = "feed stagger";
+    list.innerHTML = items.map((it, i) => {
+      const [ic, color, kind] = FEED_KIND[it.type] || FEED_KIND.other;
+      return `<li style="--i:${i}"><a class="row" data-spot href="${esc(it.url)}" target="_blank" rel="noopener">
+        <span class="row__icon" style="--c:${color}">${icon(ic)}</span>
+        <span class="row__text">${feedText(it)}</span>
+        <span class="row__meta">${t(`kind.${kind}`)} • ${relTime(it.date)}</span>
+        ${icon("external", "row__go")}
+      </a></li>`;
+    }).join("");
+    note.textContent = live ? t("feed.live") : t("feed.cached");
+    note.classList.toggle("is-live", live);
+  }
+
+  function renderFeatured() {
+    $("#featured").className = "feed stagger";
+    $("#featured").innerHTML = PROJECTS.filter((p) => p.featured).map((p, i) => `
+      <li style="--i:${i}"><button type="button" class="row row--wrap" data-spot data-project="${p.id}">
+        <span class="row__icon" style="--c:${p.color}">${icon(CAT_ICON[p.cat[0]] || "box")}</span>
+        <span class="row__text"><b>${esc(p.name)}</b><small>${esc(p.desc[lang] || p.desc.en)}</small></span>
+        <span class="row__meta">${esc(p.lang || p.tags[0])}</span>
+        ${icon("chevron", "row__go")}
+      </button></li>`).join("");
+  }
+
+  /* ======================================================================
+     Projects
+     ====================================================================== */
+  function renderProjects() {
+    const grid = $("#projGrid");
+    const visible = PROJECTS.filter((p) => state.filter === "all" || p.cat.includes(state.filter));
+    grid.innerHTML = visible.map((p, i) => `
+      <button type="button" class="pcard" data-spot data-project="${p.id}" style="--i:${i};--c:${p.color}">
+        <span class="pcard__cover">${coverHTML(p)}${p.featured ? `<span class="pcard__badge">${t("project.featured")}</span>` : ""}</span>
+        <span class="pcard__body">
+          <span class="pcard__top"><span class="pcard__title">${esc(p.name)}</span>${starsHTML(p)}</span>
+          <span class="pcard__desc">${esc(p.desc[lang] || p.desc.en)}</span>
+          <span class="pcard__meta">${langHTML(p)}<span>${p.cat.map((c) => t(`cat.${c}`)).join(" · ")}</span></span>
+        </span>
+      </button>`).join("") + `
+      <a class="pcard pcard--more" data-spot href="https://github.com/${SITE.github}?tab=repositories" target="_blank" rel="noopener" style="--i:${visible.length}">
+        <span class="more__icon">${icon("github")}</span>
+        <span class="pcard__title">${t("project.more")}</span>
+        <span class="pcard__desc">${t("project.moreText", { n: num(state.gh.repos) })}</span>
+      </a>`;
+    $("#projCount").textContent = `${visible.length} ${plural(visible.length, t("projects.count"))}`;
+  }
+
+  function updateStars() {
+    $$("[data-stars]").forEach((el) => {
+      const n = state.gh.starsMap?.[el.dataset.stars.toLowerCase()];
+      if (n == null) return;
+      el.querySelector("b").textContent = n;
+      el.hidden = false;
+    });
+  }
+
+  /* ---------- Drawer ---------- */
+  const drawer = $("#drawer");
+  let drawerIdx = -1;
+
+  function renderDrawer() {
+    const p = PROJECTS[drawerIdx];
+    const repoUrl = `https://github.com/${SITE.github}/${p.repo}`;
+    const n = projectStars(p);
+    const ext = ' target="_blank" rel="noopener"';
+    $("#drawerPanel").innerHTML = `
+      <header class="drawer__head">
+        <span class="drawer__crumbs">${t("nav.projects")} / <b>${esc(p.name)}</b></span>
+        <div class="drawer__nav">
+          <button class="icon-btn" type="button" data-step="-1" aria-label="${t("project.prev")}">${icon("arrow-left")}</button>
+          <button class="icon-btn" type="button" data-step="1" aria-label="${t("project.next")}">${icon("arrow-right")}</button>
+          <button class="icon-btn" type="button" data-close aria-label="${t("ui.close")}">${icon("x")}</button>
+        </div>
+      </header>
+      <div class="drawer__cover" style="--c:${p.color}">${coverHTML(p)}</div>
+      <div class="drawer__body">
+        <h2 class="drawer__title" id="drawerTitle" style="--i:0">${esc(p.name)}</h2>
+        <p class="drawer__desc" style="--i:1">${esc(p.desc[lang] || p.desc.en)}</p>
+        <div class="badges" style="--i:2">${p.featured ? `<span class="badge badge--ok">${icon("star")}${t("project.featured")}</span>` : ""}${p.tags.map((x) => `<span class="badge">${esc(x)}</span>`).join("")}</div>
+        <dl class="stats-list" style="--i:3">
+          <div><dt>${icon("code")}<span>${t("project.lang")}</span></dt><dd>${langHTML(p)}</dd></div>
+          <div><dt>${icon("star")}<span>${t("project.stars")}</span></dt><dd>${n ?? "—"}</dd></div>
+          <div><dt>${icon("grid")}<span>${t("project.category")}</span></dt><dd>${p.cat.map((c) => t(`cat.${c}`)).join(" · ")}</dd></div>
+          <div class="is-warm"><dt>${icon("github")}<span>${t("project.repo")}</span></dt><dd>${esc(p.repo)}</dd></div>
+        </dl>
+        <div class="actions" style="--i:4">
+          <a class="btn btn--primary" href="${repoUrl}"${ext}>${icon("github")}<span>${t("project.open")}</span></a>
+          ${p.live ? `<a class="btn" href="${esc(p.live)}"${ext}>${icon("external")}<span>${t("project.live")}</span></a>` : ""}
+          ${p.extra ? `<a class="btn" href="${esc(p.extra.url)}"${ext}>${icon("external")}<span>${esc(p.extra.label)}</span></a>` : ""}
+        </div>
+      </div>`;
+  }
+
+  function openProject(id) {
+    const i = PROJECTS.findIndex((p) => p.id === id);
+    if (i < 0) return;
+    drawerIdx = i;
+    renderDrawer();
+    if (!drawer.open) drawer.showModal();
+    $('[data-close]', drawer)?.focus({ preventScroll: true });
+  }
+
+  function stepProject(d) {
+    drawerIdx = (drawerIdx + d + PROJECTS.length) % PROJECTS.length;
+    renderDrawer();
+    $(`[data-step="${d}"]`, drawer)?.focus({ preventScroll: true });
+  }
+
+  /* ---------- Dialog helpers ---------- */
+  function closeDialog(d) {
+    if (!d.open || d.classList.contains("is-closing")) return;
+    if (!motionOK()) { d.close(); return; }
+    d.classList.add("is-closing");
+    setTimeout(() => {
+      d.classList.remove("is-closing");
+      d.close();
+    }, 220);
+  }
+
+  function initDialogs() {
+    $$("dialog").forEach((d) => {
+      d.addEventListener("cancel", (e) => { e.preventDefault(); closeDialog(d); });
+      d.addEventListener("click", (e) => {
+        if (e.target === d || e.target.closest("[data-close]")) closeDialog(d);
+      });
+    });
+    drawer.addEventListener("click", (e) => {
+      const step = e.target.closest("[data-step]");
+      if (step) stepProject(Number(step.dataset.step));
+    });
+    drawer.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowRight") stepProject(1);
+      else if (e.key === "ArrowLeft") stepProject(-1);
+    });
+  }
+
+  /* ======================================================================
+     Stack, journey, contact
+     ====================================================================== */
+  function renderStack() {
+    const langs = Object.entries(state.gh.langs).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const max = langs[0]?.[1] || 1;
+    $("#langBars").innerHTML = langs.map(([name, n], i) => `
+      <li class="bar" style="--i:${i};--c:${LANG_COLORS[name] || "var(--accent)"}">
+        <span class="bar__name"><i></i>${esc(name)}</span>
+        <span class="bar__track"><span class="bar__fill" style="--w:${((n / max) * 100).toFixed(1)}%"></span></span>
+        <span class="bar__count">${n} ${plural(n, t("repos"))}</span>
+      </li>`).join("");
+    const src = $("#langSource");
+    src.textContent = t(state.gh.live ? "stack.live" : "stack.cached");
+    src.classList.toggle("is-live", state.gh.live);
+
+    $("#toolChips").innerHTML = SITE.tools.map((x, i) => `<span class="chip" style="--i:${i}"><i></i>${esc(x)}</span>`).join("");
+    $("#services").innerHTML = SERVICES.map((s, i) => `
+      <li class="service" style="--i:${i}">
+        <span class="service__icon">${icon(s.icon)}</span>
+        <b>${t(`svc.${s.key}`)}</b>
+        <p>${t(`svc.${s.key}Text`)}</p>
+      </li>`).join("");
+  }
+
+  function renderJourney() {
+    $("#journey").innerHTML = TIMELINE.map((it, i) => {
+      const [title, text] = it[lang] || it.en;
+      return `<li style="--i:${i}">
+        <span class="journey__dot">${icon(it.icon)}</span>
+        <article class="card" data-spot>
+          <span class="journey__year">${it.year}</span>
+          <h3 class="journey__title">${esc(title)}</h3>
+          <p class="journey__text">${esc(text)}</p>
+        </article>
+      </li>`;
+    }).join("");
+  }
+
+  function getSocials() {
+    const s = SITE.socials || {};
+    return [
+      { label: "GitHub", handle: `@${SITE.github}`, url: `https://github.com/${SITE.github}`, icon: "github", color: "var(--text)" },
+      s.telegram && { label: "Telegram", handle: s.telegram.replace(/^https?:\/\/(t\.me\/)?/, "@"), url: s.telegram, icon: "send", color: "var(--blue)" },
+      s.discord && { label: "Discord", handle: "Discord", url: s.discord, icon: "chat", color: "var(--violet)" },
+      s.email && { label: "Email", handle: s.email, url: `mailto:${s.email}`, icon: "mail", color: "var(--warm)", mail: true }
+    ].filter(Boolean);
+  }
+
+  function renderContact() {
+    const socials = getSocials();
+    $("#contactLinks").innerHTML = socials.map((s, i) => `
+      <li style="--i:${i}"><a class="row" data-spot href="${esc(s.url)}"${s.mail ? "" : ' target="_blank" rel="noopener"'}>
+        <span class="row__icon" style="--c:${s.color}">${icon(s.icon)}</span>
+        <span class="row__text"><b>${s.label}</b></span>
+        <span class="row__meta">${esc(s.handle)}</span>
+        ${icon("external", "row__go")}
+      </a></li>`).join("");
+    const primary = socials.find((s) => s.label === "Telegram") || socials.find((s) => s.mail) || socials[0];
+    const hi = $("#sayHi");
+    hi.href = primary.url;
+    if (primary.mail) { hi.removeAttribute("target"); hi.removeAttribute("rel"); }
+  }
+
+  /* ======================================================================
+     Typed roles, clock
      ====================================================================== */
   let typedToken = 0;
   function startTyped() {
     const el = $("#typed");
     const roles = t("hero.roles");
     const token = ++typedToken;
-    if (reduced) { el.textContent = roles[0]; return; }
+    if (!motionOK()) { el.textContent = roles[0]; return; }
     let ri = 0, ci = 0, deleting = false;
     el.textContent = "";
     const step = () => {
@@ -408,375 +612,279 @@
       const word = roles[ri];
       if (!deleting) {
         el.textContent = word.slice(0, ++ci);
-        if (ci === word.length) { deleting = true; return setTimeout(step, 1800); }
-        return setTimeout(step, 60 + Math.random() * 60);
+        if (ci === word.length) { deleting = true; return setTimeout(step, 1900); }
+        return setTimeout(step, 55 + Math.random() * 60);
       }
       el.textContent = word.slice(0, --ci);
-      if (ci === 0) {
-        deleting = false;
-        ri = (ri + 1) % roles.length;
-        return setTimeout(step, 320);
-      }
-      setTimeout(step, 32);
+      if (ci === 0) { deleting = false; ri = (ri + 1) % roles.length; return setTimeout(step, 320); }
+      setTimeout(step, 30);
     };
     step();
   }
 
-  function buildHeroMarquee() {
-    const track = $("#heroMarquee .marquee__track");
-    const item = (html) => `<span class="marquee__item">${html}<i></i></span>`;
-    const seq = [t("marquee.lead"), ...PROJECTS.slice(0, 6).map((p) => `<b>${esc(p.name)}</b>`)].map(item).join("");
-    track.innerHTML = seq + seq;
-    track.style.setProperty("--dur", "48s");
-  }
-
-  function buildPills() {
-    $$("[data-pills]").forEach((track) => {
-      const row = SITE.stack[Number(track.dataset.pills)] || [];
-      const half = row.map((name) => `<span class="pill"><i style="--c:${LANG_COLORS[name] || "var(--accent)"}"></i>${esc(name)}</span>`).join("");
-      track.innerHTML = half + half + half + half;
-    });
-  }
-
-  function initMiniWindow() {
-    const screens = $$(".mini-window .screen");
-    const title = $(".mini-window__title");
-    if (reduced || screens.length < 2) return;
-    let i = 0;
-    setInterval(() => {
-      if (document.hidden) return;
-      screens[i].classList.remove("is-active");
-      i = (i + 1) % screens.length;
-      screens[i].classList.add("is-active");
-      title.textContent = screens[i].dataset.title;
-    }, 2600);
-  }
-
-  function initSignature() {
-    const card = $(".card--cred");
-    const sig = $(".signature");
-    card.addEventListener("pointerenter", () => {
-      if (!card.classList.contains("is-in") || reduced) return;
-      sig.classList.add("redraw");
-      void sig.getBoundingClientRect();
-      sig.classList.remove("redraw");
-    });
-  }
-
-  function initServices() {
-    const card = $(".card--services");
-    const items = $$(".service", card);
-    if (reduced) return;
-    let hot = 0;
-    setInterval(() => {
-      const hovering = card.matches(":hover") || card.contains(document.activeElement);
-      items.forEach((s, i) => s.classList.toggle("is-hot", !hovering && i === hot));
-      hot = (hot + 1) % items.length;
-    }, 1600);
-  }
-
-  /* ======================================================================
-     Socials
-     ====================================================================== */
-  function getSocials() {
-    const s = SITE.socials || {};
-    return [
-      { label: "GitHub", url: `https://github.com/${SITE.github}`, icon: "github" },
-      s.telegram && { label: "Telegram", url: s.telegram, icon: "send" },
-      s.discord && { label: "Discord", url: s.discord, icon: "chat" },
-      s.email && { label: "Email", url: `mailto:${s.email}`, icon: "mail", mail: true }
-    ].filter(Boolean);
-  }
-
-  function buildSocials() {
-    const socials = getSocials();
-    const target = (s) => (s.mail ? "" : ' target="_blank" rel="noopener"');
-
-    $("#contactLinks").innerHTML = socials
-      .map((s) => `<li><a href="${esc(s.url)}"${target(s)} data-cursor="${s.label}">${icon(s.icon)}${s.label}</a></li>`)
-      .join("");
-
-    const copyBtn = $("#copyLink");
-    socials.slice(1).forEach((s) => {
-      const a = document.createElement("a");
-      a.className = "social magnetic";
-      a.href = s.url;
-      a.setAttribute("aria-label", s.label);
-      a.dataset.cursor = s.label;
-      if (!s.mail) { a.target = "_blank"; a.rel = "noopener"; }
-      a.innerHTML = icon(s.icon);
-      copyBtn.before(a);
-    });
-
-    const primary = socials.find((s) => s.label === "Telegram") || socials.find((s) => s.mail) || socials[0];
-    const hi = $("#sayHi");
-    hi.href = primary.url;
-    if (primary.mail) { hi.removeAttribute("target"); hi.removeAttribute("rel"); }
-
-    $("#status").hidden = !SITE.available;
-
-    copyBtn.addEventListener("click", async () => {
-      const url = location.href.split("#")[0];
-      try {
-        await navigator.clipboard.writeText(url);
-      } catch {
-        const ta = document.createElement("textarea");
-        ta.value = url;
-        ta.style.cssText = "position:fixed;opacity:0";
-        document.body.append(ta);
-        ta.select();
-        try { document.execCommand("copy"); } catch { /* ignore */ }
-        ta.remove();
-      }
-      toast(t("ui.copied"));
-    });
-  }
-
-  /* ======================================================================
-     Stats + live GitHub data
-     ====================================================================== */
-  const statValues = {
-    years: new Date().getFullYear() - SITE.since,
-    repos: SITE.stats.repos,
-    followers: SITE.stats.followers
-  };
-  let stars = null;
-  let statsSeen = false;
-
-  function renderStat(el, value) {
-    const pad = Number(el.dataset.pad) || 0;
-    el.textContent = (el.dataset.prefix || "") + String(Math.round(value)).padStart(pad, "0");
-  }
-
-  function animateStats() {
-    $$("[data-count]").forEach((el) => {
-      const to = statValues[el.dataset.count];
-      const from = Number(el.dataset.value) || 0;
-      el.dataset.value = to;
-      if (reduced || from === to) return renderStat(el, to);
-      const start = performance.now();
-      const dur = 1800;
-      const tick = (now) => {
-        const p = Math.min((now - start) / dur, 1);
-        const e = p === 1 ? 1 : 1 - Math.pow(2, -10 * p);
-        renderStat(el, from + (to - from) * e);
-        if (p < 1) requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    });
-  }
-
-  function initStats() {
-    $$("[data-count]").forEach((el) => renderStat(el, 0));
-    const statsIO = new IntersectionObserver(([e]) => {
-      if (!e.isIntersecting) return;
-      statsSeen = true;
-      animateStats();
-      statsIO.disconnect();
-    }, { threshold: 0.4 });
-    statsIO.observe($(".card--stats"));
-  }
-
-  async function fetchJSON(url) {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 7000);
+  let clockFmt = null;
+  let clockOffset = "";
+  function makeClock() {
     try {
-      const res = await fetch(url, { signal: ctrl.signal, headers: { Accept: "application/vnd.github+json" } });
-      if (!res.ok) throw new Error(String(res.status));
-      return await res.json();
-    } finally {
-      clearTimeout(timer);
+      clockFmt = new Intl.DateTimeFormat(lang === "ru" ? "ru-RU" : "en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: SITE.timezone });
+      clockOffset = new Intl.DateTimeFormat("en-US", { timeZone: SITE.timezone, timeZoneName: "shortOffset" })
+        .formatToParts(new Date()).find((p) => p.type === "timeZoneName")?.value || "";
+    } catch {
+      clockFmt = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      clockOffset = "";
     }
   }
-
-  async function loadGitHub() {
-    const key = "gh-cache-v1";
-    let data = null;
-    try { data = JSON.parse(session.get(key)); } catch { data = null; }
-
-    if (!data || Date.now() - data.t > 30 * 60 * 1000) {
-      try {
-        const base = `https://api.github.com/users/${SITE.github}`;
-        const [user, repos] = await Promise.all([fetchJSON(base), fetchJSON(`${base}/repos?per_page=100`)]);
-        data = {
-          t: Date.now(),
-          repos: user.public_repos,
-          followers: user.followers,
-          created: user.created_at,
-          stars: Object.fromEntries(repos.map((r) => [r.name.toLowerCase(), r.stargazers_count]))
-        };
-        session.set(key, JSON.stringify(data));
-      } catch {
-        return; // offline or rate limited — keep fallback numbers
-      }
-    }
-
-    statValues.repos = data.repos;
-    statValues.followers = data.followers;
-    if (data.created) {
-      statValues.years = Math.max(1, Math.floor((Date.now() - new Date(data.created)) / (365.25 * 864e5)));
-    }
-    stars = data.stars;
-    if (statsSeen) animateStats();
-    updateStars();
-    const more = $("#moreText");
-    if (more) more.textContent = t("works.moreText", { n: statValues.repos });
-  }
-
-  function updateStars() {
-    if (!stars) return;
-    $$("[data-stars]").forEach((el) => {
-      const n = stars[el.dataset.stars.toLowerCase()];
-      if (n == null) return;
-      el.textContent = n;
-      el.parentElement.hidden = false;
-    });
+  function tickClock() {
+    const text = `${clockFmt.format(new Date())}${clockOffset ? ` · ${clockOffset}` : ""}`;
+    $$("[data-clock]").forEach((el) => { el.textContent = text; });
   }
 
   /* ======================================================================
-     Works
+     Router
      ====================================================================== */
-  const CHART = [42, 66, 50, 80, 58, 92, 70, 86, 62, 96, 74];
+  let tabsHome = null;
+  let tabsProj = null;
 
-  function visualHTML(p) {
-    switch (p.visual) {
-      case "term":
-        return `<div class="v-term">${p.lines
-          .map((l, i) => `<p style="--i:${i}"${l.startsWith("$") ? ' class="cmd"' : ""}>${esc(l)}</p>`)
-          .join("")}</div>`;
-      case "grid":
-        return `<div class="v-grid">${Array.from({ length: 8 }, (_, i) => `<i style="--i:${i}"${i === 1 ? ' class="a"' : i === 6 ? ' class="b"' : ""}></i>`).join("")}</div>`;
-      case "chat":
-        return `<div class="v-chat">${p.chat.map((m, i) => `<span style="--i:${i}">${esc(m)}</span>`).join("")}<span class="typing" style="--i:${p.chat.length}"><b></b><b></b><b></b></span></div>`;
-      case "scan":
-        return `<div class="v-scan"><div class="v-scan__frame"></div><div class="v-scan__json">{<br>&nbsp;"anilist": <u>21</u>,<br>&nbsp;"episode": <u>12</u>,<br>&nbsp;"from": <s>"04:21"</s>,<br>&nbsp;"similarity": <u>0.97</u><br>}</div></div>`;
-      case "chart":
-        return `<div class="v-chart">${CHART.map((h, i) => `<i style="--i:${i};--h:${h}%"></i>`).join("")}</div>`;
-      case "links":
-        return `<div class="v-links"><div class="ava"></div>${[0, 1, 2, 3].map((i) => `<span style="--i:${i}"></span>`).join("")}</div>`;
-      default:
-        return "";
+  function syncIndicators() {
+    const side = $('#sideNav a[aria-current="page"]');
+    if (side) $(".side-nav__pill").style.setProperty("--y", `${side.offsetTop}px`);
+    const bar = $('#tabbar a[aria-current="page"]');
+    if (bar && bar.offsetWidth) {
+      const ind = $(".tabbar__ind");
+      ind.style.setProperty("--x", `${bar.offsetLeft}px`);
+      ind.style.setProperty("--w", `${bar.offsetWidth}px`);
     }
+    tabsHome?.sync();
+    tabsProj?.sync();
   }
 
-  function projectHTML(p) {
-    const repoUrl = `https://github.com/${SITE.github}/${p.repo}`;
-    const badge = p.lang
-      ? `<span class="lang"><i style="--c:${LANG_COLORS[p.lang] || "var(--accent)"}"></i>${esc(p.lang)}</span>`
-      : `<span class="lang"><i style="--c:var(--accent)"></i>${esc(p.tags[0])}</span>`;
-    const starCount = stars ? stars[p.repo.toLowerCase()] : null;
-    const ext = ' target="_blank" rel="noopener"';
+  const onEnter = {
+    home: () => {},
+    projects: renderProjects,
+    stack: renderStack,
+    journey: renderJourney,
+    terminal: () => bootTerminal(),
+    contact: () => {}
+  };
 
-    return `<article class="card project${p.featured ? " project--featured" : ""}" data-id="${p.id}" data-cat="${p.cat.join(" ")}" data-reveal data-tilt style="view-transition-name:p-${p.id}">
-      <div class="project__visual">${p.featured ? `<span class="project__badge">${t("works.featured")}</span>` : ""}${visualHTML(p)}</div>
-      <div class="project__body">
-        <div class="project__meta">${badge}<span class="stars"${starCount == null ? " hidden" : ""}>${icon("star")}<b data-stars="${esc(p.repo)}">${starCount ?? 0}</b></span></div>
-        <h3 class="project__title">${esc(p.name)}</h3>
-        <p class="project__desc">${esc(p.desc[lang] || p.desc.en)}</p>
-        <div class="tags">${p.tags.map((x) => `<span>${esc(x)}</span>`).join("")}</div>
-        <div class="project__links">
-          <a class="chip-link" href="${repoUrl}"${ext} data-cursor="Code">${icon("github")}${t("works.code")}</a>
-          ${p.live ? `<a class="chip-link chip-link--accent" href="${esc(p.live)}"${ext} data-cursor="Live">${t("works.live")}${icon("external")}</a>` : ""}
-          ${p.extra ? `<a class="chip-link" href="${esc(p.extra.url)}"${ext}>${esc(p.extra.label)}${icon("external")}</a>` : ""}
-        </div>
-      </div>
-    </article>`;
+  function parseHash() {
+    const [view, arg] = location.hash.replace(/^#\/?/, "").split("/");
+    return { view: VIEWS.includes(view) ? view : "home", arg };
   }
 
-  let filter = "all";
-
-  function renderProjects() {
-    const grid = $("#worksGrid");
-    const more = `<a class="card project project--more" href="https://github.com/${SITE.github}?tab=repositories" target="_blank" rel="noopener" data-cat="all" data-reveal data-tilt data-cursor="GitHub" style="view-transition-name:p-more">
-      <span class="more__icon">${icon("github")}</span>
-      <h3 class="project__title">${t("works.moreTitle")}</h3>
-      <p class="project__desc" id="moreText">${t("works.moreText", { n: statValues.repos })}</p>
-      <span class="arrow-btn">${icon("arrow")}</span>
-    </a>`;
-    grid.innerHTML = PROJECTS.map(projectHTML).join("") + more;
-    applyFilter(false);
-    observeReveals(grid);
+  function go(view) {
+    const hash = view === "home" ? "#/" : `#/${view}`;
+    if (location.hash !== hash) location.hash = hash;
+    else route();
   }
 
-  function applyFilter(animate = true) {
-    const cards = $$("#worksGrid > .project");
-    const run = () => cards.forEach((c) => {
-      const cats = c.dataset.cat.split(" ");
-      c.hidden = !(filter === "all" || cats.includes("all") || cats.includes(filter));
+  function showView(name) {
+    if (name === state.view) return;
+    const prev = state.view;
+    state.view = name;
+    $$(".view").forEach((v) => {
+      const on = v.dataset.view === name;
+      v.hidden = !on;
+      v.classList.toggle("is-entering", false);
     });
-    if (animate && document.startViewTransition && !reduced) document.startViewTransition(run);
-    else run();
+    const next = $(`.view[data-view="${name}"]`);
+    $$("[data-anim]", next).forEach((el, i) => el.style.setProperty("--i", i));
+    void next.offsetWidth;
+    next.classList.add("is-entering");
+
+    $$("#sideNav a, #tabbar a").forEach((a) => {
+      if (a.dataset.view === name) a.setAttribute("aria-current", "page");
+      else a.removeAttribute("aria-current");
+    });
+    const crumb = $("#crumb");
+    crumb.textContent = t(`nav.${name}`);
+    crumb.classList.remove("is-swap");
+    void crumb.offsetWidth;
+    crumb.classList.add("is-swap");
+    document.title = name === "home" ? "Sayka — Developer" : `${t(`nav.${name}`)} — Sayka`;
+
+    if (prev) window.scrollTo({ top: 0, behavior: "instant" });
+    onEnter[name]();
+    sky?.setActive(name === "home");
+    requestAnimationFrame(syncIndicators);
   }
 
-  function initFilters() {
-    const ind = $(".filters__indicator");
-    $$(".filter").forEach((btn) => btn.addEventListener("click", () => {
-      if (btn.dataset.filter === filter) return;
-      filter = btn.dataset.filter;
-      $$(".filter").forEach((b) => {
-        const on = b === btn;
-        b.classList.toggle("is-active", on);
-        b.setAttribute("aria-pressed", String(on));
-      });
-      moveIndicator(ind, btn);
-      applyFilter();
+  function route() {
+    const { view, arg } = parseHash();
+    showView(view);
+    if (view === "projects" && arg) openProject(arg);
+  }
+
+  /* ======================================================================
+     Command palette
+     ====================================================================== */
+  const palette = $("#palette");
+  const palInput = $("#palInput");
+  const palList = $("#palList");
+  let palItems = [];
+  let palIndex = 0;
+  const GROUPS = { views: 0, projects: 1, actions: 2 };
+
+  function paletteSource() {
+    const en = (key, vars) => {
+      let s = I18N.en[key] || "";
+      if (vars) s = s.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
+      return s;
+    };
+    const views = VIEWS.map((v, i) => ({ group: "views", label: t(`nav.${v}`), kw: `${v} ${en(`nav.${v}`)}`, icon: VIEW_ICON[v], kbd: String(i + 1), run: () => go(v) }));
+    const projects = PROJECTS.map((p) => ({
+      group: "projects", label: p.name, sub: p.desc[lang] || p.desc.en,
+      icon: CAT_ICON[p.cat[0]] || "box", color: p.color, run: () => openProject(p.id)
+    }));
+    const actions = [
+      { label: t("act.lang"), kw: "language english russian язык", icon: "globe", run: () => setLang(lang === "en" ? "ru" : "en") },
+      { label: t("act.accent"), kw: `${en("act.accent")} theme цвет`, icon: "palette", run: () => setAccent(state.accent + 1, true) },
+      ...SKY_MODES.map((m) => ({ label: t("act.sky", { name: t(`sky.${m}`) }), kw: `sky ${m}`, icon: SKY_ICON[m], run: () => { go("home"); setSky(m, true); } })),
+      { label: t("act.copy"), kw: en("act.copy"), icon: "link", run: copyLink },
+      { label: t("act.github"), kw: en("act.github"), icon: "github", run: () => window.open(`https://github.com/${SITE.github}`, "_blank", "noopener") },
+      { label: t("act.motion"), kw: `${en("act.motion")} motion`, icon: "wave", run: () => setMotion(!state.motion, true) }
+    ].map((a) => ({ group: "actions", ...a }));
+    return [...views, ...projects, ...actions];
+  }
+
+  function score(q, it) {
+    if (!q) return 1;
+    const label = it.label.toLowerCase();
+    if (label.startsWith(q)) return 4;
+    if (label.includes(q)) return 3;
+    if (`${it.sub || ""} ${it.kw || ""}`.toLowerCase().includes(q)) return 2;
+    let j = 0;
+    for (const ch of label) {
+      if (ch === q[j]) j++;
+      if (j === q.length) return 1;
+    }
+    return 0;
+  }
+
+  function highlight(label, q) {
+    const i = q ? label.toLowerCase().indexOf(q) : -1;
+    if (i < 0) return esc(label);
+    return `${esc(label.slice(0, i))}<mark>${esc(label.slice(i, i + q.length))}</mark>${esc(label.slice(i + q.length))}`;
+  }
+
+  function renderPalette() {
+    const q = palInput.value.trim().toLowerCase();
+    palItems = paletteSource()
+      .map((it) => ({ ...it, score: score(q, it) }))
+      .filter((it) => it.score > 0)
+      .sort((a, b) => GROUPS[a.group] - GROUPS[b.group] || b.score - a.score);
+    palIndex = 0;
+    if (!palItems.length) {
+      palList.innerHTML = `<li class="pal-empty">${t("palette.empty", { q: esc(palInput.value.trim()) })}</li>`;
+      palInput.removeAttribute("aria-activedescendant");
+      return;
+    }
+    let html = "";
+    let group = null;
+    const groupKey = { views: "palette.groupViews", projects: "palette.groupProjects", actions: "palette.groupActions" };
+    palItems.forEach((it, i) => {
+      if (it.group !== group) {
+        group = it.group;
+        html += `<li class="pal-group" role="presentation">${t(groupKey[group])}</li>`;
+      }
+      html += `<li class="pal-item" role="option" id="pal-${i}" data-i="${i}" aria-selected="false">
+        <span class="pal-item__icon"${it.color ? ` style="--c:${it.color}"` : ""}>${icon(it.icon)}</span>
+        <span class="pal-item__label">${highlight(it.label, q)}</span>
+        ${it.sub ? `<span class="pal-item__sub">${esc(it.sub)}</span>` : ""}
+        ${it.kbd ? `<kbd>${it.kbd}</kbd>` : ""}
+      </li>`;
+    });
+    palList.innerHTML = html;
+    setPalIndex(0);
+  }
+
+  function setPalIndex(i) {
+    if (!palItems.length) return;
+    palIndex = (i + palItems.length) % palItems.length;
+    $$(".pal-item", palList).forEach((el) => el.setAttribute("aria-selected", String(Number(el.dataset.i) === palIndex)));
+    const active = $(`#pal-${palIndex}`);
+    palInput.setAttribute("aria-activedescendant", `pal-${palIndex}`);
+    active?.scrollIntoView({ block: "nearest" });
+  }
+
+  function runPalette(i) {
+    const it = palItems[i];
+    if (!it) return;
+    palette.close();
+    it.run();
+  }
+
+  function openPalette() {
+    if (palette.open) return;
+    $$("dialog[open]").forEach((d) => d.close());
+    palInput.value = "";
+    renderPalette();
+    palette.showModal();
+    palInput.focus();
+  }
+
+  function initPalette() {
+    palInput.addEventListener("input", renderPalette);
+    palInput.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown") { e.preventDefault(); setPalIndex(palIndex + 1); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); setPalIndex(palIndex - 1); }
+      else if (e.key === "Enter") { e.preventDefault(); runPalette(palIndex); }
+    });
+    palList.addEventListener("pointermove", (e) => {
+      const item = e.target.closest(".pal-item");
+      if (item && Number(item.dataset.i) !== palIndex) setPalIndex(Number(item.dataset.i));
+    });
+    palList.addEventListener("click", (e) => {
+      const item = e.target.closest(".pal-item");
+      if (item) runPalette(Number(item.dataset.i));
+    });
+    $$("[data-open-palette]").forEach((b) => b.addEventListener("click", openPalette));
+    const hint = isMac ? "⌘K" : "Ctrl K";
+    $("#kbdHint").textContent = hint;
+    $("#kbdHint2").textContent = hint;
+  }
+
+  /* ======================================================================
+     Settings
+     ====================================================================== */
+  function initSettings() {
+    const dlg = $("#settings");
+    $("#setAccent").innerHTML = SITE.accents.map((a, i) =>
+      `<button type="button" class="swatch" role="radio" aria-checked="${i === state.accent}" aria-label="${a.name}" title="${a.name}" style="--a:${a.a};--b:${a.b}" data-accent="${i}"></button>`
+    ).join("");
+    $("#setAccent").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-accent]");
+      if (b) setAccent(Number(b.dataset.accent));
+    });
+    $("#setLang").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-lang]");
+      if (b) setLang(b.dataset.lang);
+      syncSettings();
+    });
+    $("#setMotion").addEventListener("click", () => setMotion(!state.motion));
+    $$("[data-open-settings]").forEach((b) => b.addEventListener("click", () => {
+      syncSettings();
+      dlg.showModal();
     }));
   }
 
-  /* ======================================================================
-     Timeline
-     ====================================================================== */
-  function renderTimeline() {
-    $("#timeline").innerHTML = TIMELINE.map((it, i) => {
-      const [title, text] = it[lang] || it.en;
-      return `<li style="--i:${i}"><span class="tl__year">${it.year}</span><b class="tl__title">${esc(title)}</b><span class="tl__text">${esc(text)}</span></li>`;
-    }).join("");
+  function syncSettings() {
+    $$("#setLang [data-lang]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.lang === lang)));
+    $$(".swatch").forEach((s, i) => s.setAttribute("aria-checked", String(i === state.accent)));
+    $("#setMotion").setAttribute("aria-checked", String(state.motion));
   }
 
   /* ======================================================================
-     Contact: rotating ring text + clock
+     Terminal
      ====================================================================== */
-  function updateRing() {
-    const tp = $("#ringText");
-    tp.textContent = t("contact.ring").repeat(2);
-    tp.setAttribute("textLength", String(Math.floor(2 * Math.PI * 78) - 4));
-    tp.setAttribute("lengthAdjust", "spacing");
-  }
+  let bootTerminal = () => {};
 
-  let clockFmt = null;
-  function initClock() {
-    const el = $("#clock");
-    const makeFmt = () => {
-      try {
-        clockFmt = new Intl.DateTimeFormat(lang === "ru" ? "ru-RU" : "en-GB", {
-          hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: SITE.timezone
-        });
-      } catch {
-        clockFmt = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-      }
-    };
-    let offset = "";
-    try {
-      offset = new Intl.DateTimeFormat("en-US", { timeZone: SITE.timezone, timeZoneName: "shortOffset" })
-        .formatToParts(new Date()).find((p) => p.type === "timeZoneName")?.value || "";
-    } catch { offset = ""; }
-
-    const tick = () => { el.textContent = `${clockFmt.format(new Date())}${offset ? ` · ${offset}` : ""}`; };
-    makeFmt();
-    tick();
-    setInterval(tick, 1000);
-    langListeners.push(() => { makeFmt(); tick(); });
-  }
-
-  /* ======================================================================
-     Interactive terminal
-     ====================================================================== */
   function initTerminal() {
     const out = $("#termOut");
     const input = $("#termIn");
-    const body = $("#termBody");
     const history = [];
     let hi = 0;
+    let booted = false;
 
     const print = (html, cls = "") => {
       const d = document.createElement("div");
@@ -785,7 +893,6 @@
       out.append(d);
       out.scrollTop = out.scrollHeight;
     };
-
     const findProject = (q) => {
       const s = (q || "").toLowerCase();
       return PROJECTS.find((p) => p.id === s || p.name.toLowerCase() === s || p.repo.toLowerCase() === s);
@@ -793,7 +900,7 @@
 
     const cmds = {
       help() {
-        const rows = [["help"], ["about"], ["projects"], ["open <name>", "open"], ["stack"], ["contact"], ["neofetch"], ["theme [name]", "theme"], ["lang [en|ru]", "lang"], ["clear"]];
+        const rows = [["help"], ["about"], ["projects"], ["open <name>", "open"], ["cd <page>", "cd"], ["stack"], ["contact"], ["neofetch"], ["sky <mode>", "sky"], ["theme <name>", "theme"], ["lang [en|ru]", "lang"], ["clear"]];
         print(t("term.helpHead"), "t-accent");
         print(`<div class="t-grid">${rows.map(([c, k]) => `<b>${esc(c)}</b><span>${t(`term.cmd.${k || c}`)}</span>`).join("")}</div>`);
       },
@@ -808,33 +915,45 @@
         const p = findProject(arg);
         if (!p) return print(t("term.openUsage", { list: PROJECTS.slice(0, 3).map((x) => x.id).join(", ") }), "t-err");
         print(t("term.opening", { name: esc(p.name) }), "t-ok");
-        window.open(`https://github.com/${SITE.github}/${p.repo}`, "_blank", "noopener");
+        setTimeout(() => openProject(p.id), 250);
       },
-      stack() { print(SITE.stack.flat().map((s) => `<b>${esc(s)}</b>`).join(" · ")); },
+      cd(arg) {
+        const v = (arg || "").replace(/^\.?\/?|\/$/g, "").toLowerCase();
+        if (v === "~" || v === "" || v === "..") return go("home");
+        if (!VIEWS.includes(v)) return print(t("term.cdUsage", { list: VIEWS.join(", ") }), "t-err");
+        go(v);
+      },
+      stack() { print([...Object.keys(state.gh.langs), ...SITE.tools].map((s) => `<b>${esc(s)}</b>`).join(" · ")); },
       contact() {
         print(getSocials().map((s) => `${s.label.padEnd(9, " ")}<a href="${esc(s.url)}"${s.mail ? "" : ' target="_blank" rel="noopener"'}>${esc(s.url.replace(/^mailto:|^https?:\/\//, ""))}</a>`).join("\n"));
       },
       neofetch() {
         const logo = ["  ▄▄▄▄▄▄ ", " █▀    ▀ ", " ▀█▄▄▄▄  ", "      ▀█ ", " ▄    ▄█ ", "  ▀▀▀▀▀  "].join("\n");
         const info = [
-          `<b class="t-accent">sayka</b>@<b class="t-accent">github</b>`,
-          "─────────────────",
-          `<b>Location</b>: ${t("hero.location")}`,
+          `<b class="t-accent">sayka</b>@<b class="t-accent">${SITE.domain}</b>`,
+          "─────────────────────",
+          `<b>Location</b>: ${t("profile.country")}`,
           "<b>Company</b>: MiraiLab Inc.",
-          `<b>Uptime</b>: ${t("term.uptime")} ${SITE.since}`,
-          `<b>Repos</b>: ${statValues.repos}`,
-          `<b>Followers</b>: ${statValues.followers}`,
-          `<b>Langs</b>: ${SITE.stack[0].slice(0, 4).join(", ")}`,
+          `<b>Uptime</b>: ${t("term.uptime")} ${new Date(SITE.joined).getFullYear()}`,
+          `<b>Repos</b>: ${state.gh.repos}`,
+          `<b>Stars</b>: ${state.gh.stars}`,
+          `<b>Followers</b>: ${state.gh.followers}`,
+          `<b>Langs</b>: ${Object.keys(state.gh.langs).slice(0, 4).join(", ")}`,
           SITE.accents.map((a) => `<span class="t-swatch" style="background:${a.a}"></span>`).join("")
         ].join("\n");
         print(`<div class="t-neo"><pre>${logo}</pre><div>${info}</div></div>`);
       },
+      sky(arg) {
+        const m = (arg || "").toLowerCase();
+        if (!SKY_MODES.includes(m)) return print(t("term.skyUsage"), "t-err");
+        setSky(m);
+        print(t("term.skySet", { name: t(`sky.${m}`) }), "t-ok");
+      },
       theme(arg) {
         const list = SITE.accents.map((a) => a.name).join(", ");
-        if (!arg) return print(t("term.themeUsage", { list }));
-        const i = SITE.accents.findIndex((a) => a.name === arg.toLowerCase());
-        if (i < 0) return print(t("term.themeUsage", { list }), "t-err");
-        setAccent(i, $("#accentBtn"));
+        const i = SITE.accents.findIndex((a) => a.name === (arg || "").toLowerCase());
+        if (i < 0) return print(t("term.themeUsage", { list }), arg ? "t-err" : "");
+        setAccent(i);
         print(t("term.themeSet", { name: SITE.accents[i].name }), "t-ok");
       },
       lang(arg) {
@@ -851,7 +970,7 @@
       exit() { print(t("term.exit")); },
       hire() {
         print(t("term.hire"), "t-ok");
-        setTimeout(() => $("#contact").scrollIntoView({ behavior: reduced ? "auto" : "smooth" }), 500);
+        setTimeout(() => go("contact"), 500);
       },
       github() { window.open(`https://github.com/${SITE.github}`, "_blank", "noopener"); }
     };
@@ -863,18 +982,16 @@
       history.push(line);
       hi = history.length;
       const [name, ...args] = line.split(/\s+/);
-      const fn = Object.prototype.hasOwnProperty.call(cmds, name.toLowerCase()) ? cmds[name.toLowerCase()] : null;
-      if (fn) fn(...args);
+      const key = name.toLowerCase();
+      if (Object.prototype.hasOwnProperty.call(cmds, key)) cmds[key](...args);
       else print(t("term.notFound", { cmd: esc(name) }), "t-err");
     };
 
     const complete = (value) => {
       const [cmd, arg] = value.split(/\s+/);
-      if (arg === undefined) {
-        return Object.keys(cmds).find((c) => c.startsWith(cmd.toLowerCase()) && c !== cmd);
-      }
-      const pool = cmd === "open" ? PROJECTS.map((p) => p.id) : cmd === "theme" ? SITE.accents.map((a) => a.name) : cmd === "lang" ? ["en", "ru"] : [];
-      const hit = pool.find((x) => x.startsWith(arg.toLowerCase()) && x !== arg);
+      if (arg === undefined) return Object.keys(cmds).find((c) => c.startsWith(cmd.toLowerCase()) && c !== cmd);
+      const pools = { open: PROJECTS.map((p) => p.id), cd: VIEWS, sky: SKY_MODES, theme: SITE.accents.map((a) => a.name), lang: ["en", "ru"] };
+      const hit = (pools[cmd] || []).find((x) => x.startsWith(arg.toLowerCase()) && x !== arg);
       return hit ? `${cmd} ${hit}` : null;
     };
 
@@ -898,76 +1015,207 @@
       }
     });
 
-    body.addEventListener("click", (e) => {
+    $("#termBody").addEventListener("click", (e) => {
       if (e.target.closest("a") || String(getSelection())) return;
       input.focus({ preventScroll: true });
     });
 
-    // "/" focuses the terminal from anywhere on the page.
-    document.addEventListener("keydown", (e) => {
-      if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.target.closest && e.target.closest("input, textarea, [contenteditable]")) return;
-      e.preventDefault();
-      $("#terminal").scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" });
-      input.focus({ preventScroll: true });
-    });
-
-    // Boot sequence once the terminal scrolls into view.
-    const boot = async () => {
+    bootTerminal = async () => {
+      if (booted) return;
+      booted = true;
       print(t("term.welcome"));
-      if (reduced) return cmds.neofetch();
-      await sleep(500);
+      if (!motionOK()) { cmds.neofetch(); return; }
+      await sleep(600);
       for (const ch of "neofetch") {
         if (document.activeElement === input) { input.value = ""; return; }
         input.value += ch;
-        await sleep(85);
+        await sleep(80);
       }
       await sleep(250);
       if (document.activeElement === input) { input.value = ""; return; }
       input.value = "";
       run("neofetch");
     };
-    const termIO = new IntersectionObserver(([e]) => {
-      if (!e.isIntersecting) return;
-      termIO.disconnect();
-      boot();
-    }, { threshold: 0.35 });
-    termIO.observe($("#terminal"));
+  }
+
+  /* ======================================================================
+     GitHub data
+     ====================================================================== */
+  async function fetchJSON(url) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 7000);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal, headers: { Accept: "application/vnd.github+json" } });
+      if (!res.ok) throw new Error(String(res.status));
+      return await res.json();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function fetchGitHub() {
+    const base = `https://api.github.com/users/${SITE.github}`;
+    const [u, r, ev] = await Promise.allSettled([
+      fetchJSON(base),
+      fetchJSON(`${base}/repos?per_page=100&sort=pushed`),
+      fetchJSON(`${base}/events/public?per_page=40`)
+    ]);
+    if ([u, r, ev].every((x) => x.status !== "fulfilled")) return null;
+    const data = { t: Date.now() };
+    if (u.status === "fulfilled") {
+      const v = u.value;
+      data.user = { repos: v.public_repos, followers: v.followers, following: v.following, created: v.created_at };
+    }
+    if (r.status === "fulfilled" && Array.isArray(r.value)) {
+      data.repos = r.value.filter((x) => !x.fork).map((x) => ({ name: x.name, stars: x.stargazers_count, lang: x.language }));
+    }
+    if (ev.status === "fulfilled" && Array.isArray(ev.value)) {
+      data.events = mergeEvents(ev.value.map(mapEvent).filter((x) => x.type !== "branch" && x.type !== "delete")).slice(0, 10);
+    }
+    return data;
+  }
+
+  function applyGitHub(data) {
+    const gh = state.gh;
+    if (data.user) {
+      gh.repos = data.user.repos;
+      gh.followers = data.user.followers;
+      gh.following = data.user.following;
+      if (data.user.created) gh.years = yearsSince(data.user.created);
+    }
+    if (data.repos) {
+      gh.starsMap = Object.fromEntries(data.repos.map((x) => [x.name.toLowerCase(), x.stars]));
+      gh.stars = data.repos.reduce((s, x) => s + (x.stars || 0), 0);
+      const langs = {};
+      data.repos.forEach((x) => { if (x.lang) langs[x.lang] = (langs[x.lang] || 0) + 1; });
+      if (Object.keys(langs).length) gh.langs = langs;
+    }
+    if (data.events && data.events.length) gh.events = data.events;
+    gh.live = !!(data.user || data.repos || data.events);
+  }
+
+  async function loadGitHub() {
+    const key = "gh-v2";
+    let data = null;
+    try { data = JSON.parse(session.get(key)); } catch { data = null; }
+    if (!data || Date.now() - data.t > 15 * 60 * 1000) {
+      const fallbackTimer = setTimeout(() => {
+        if (state.gh.loaded) return;
+        state.gh.loaded = true;
+        renderFeed();
+      }, 2500);
+      data = await fetchGitHub().catch(() => null);
+      clearTimeout(fallbackTimer);
+      if (data) session.set(key, JSON.stringify(data));
+    }
+    if (data) applyGitHub(data);
+    state.gh.loaded = true;
+    renderFeed();
+    refreshCounts();
+    updateStars();
+    if (state.view === "stack") renderStack();
+    const more = $(".pcard--more .pcard__desc");
+    if (more) more.textContent = t("project.moreText", { n: num(state.gh.repos) });
+  }
+
+  /* ======================================================================
+     Re-render everything that depends on language
+     ====================================================================== */
+  function renderDynamic() {
+    renderFeed();
+    renderFeatured();
+    renderContact();
+    if (state.view && onEnter[state.view] && state.view !== "terminal") onEnter[state.view]();
+    if (state.view) {
+      $("#crumb").textContent = t(`nav.${state.view}`);
+      document.title = state.view === "home" ? "Sayka — Developer" : `${t(`nav.${state.view}`)} — Sayka`;
+    }
+    $$("[data-count]").forEach((el) => { if (counted.has(el)) el.textContent = num(Number(el.dataset.value) || 0); });
+    if (palette.open) renderPalette();
+    if (drawer.open) renderDrawer();
+    syncSettings();
+    makeClock();
+    tickClock();
+    startTyped();
+    requestAnimationFrame(syncIndicators);
+  }
+
+  /* ======================================================================
+     Global keyboard shortcuts
+     ====================================================================== */
+  function initShortcuts() {
+    document.addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        if (palette.open) closeDialog(palette);
+        else openPalette();
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.target.closest && e.target.closest("input, textarea, [contenteditable]")) return;
+      if ($("dialog[open]")) return;
+      if (e.key === "/") {
+        e.preventDefault();
+        openPalette();
+      } else if (/^[1-6]$/.test(e.key)) {
+        go(VIEWS[Number(e.key) - 1]);
+      }
+    });
   }
 
   /* ======================================================================
      Boot
      ====================================================================== */
-  setAccent(accentIdx);
-  buildPills();
-  buildSocials();
-
-  langListeners.push(resplit, buildHeroMarquee, startTyped, renderProjects, renderTimeline, updateRing);
-  applyLang();
-
-  $("#langBtn").addEventListener("click", () => setLang(lang === "en" ? "ru" : "en"));
-  $("#accentBtn").addEventListener("click", (e) => {
-    setAccent(accentIdx + 1, e.currentTarget);
-    toast(t("ui.accentSet", { name: SITE.accents[accentIdx].name }));
-  });
-  $("#toTop").addEventListener("click", () => window.scrollTo({ top: 0, behavior: reduced ? "auto" : "smooth" }));
+  setAccent(state.accent);
+  root.classList.toggle("reduce-motion", !state.motion);
+  $$("[data-status]").forEach((el) => { el.hidden = !SITE.available; });
   $("#year").textContent = new Date().getFullYear();
 
-  initPointer();
-  initMagnetic();
-  initHeader();
-  initFilters();
-  initMiniWindow();
-  initSignature();
-  initServices();
-  initClock();
+  applyStatic();
+  makeClock();
+  tickClock();
+  setInterval(tickClock, 1000);
 
-  preload(() => {
-    revealReady = true;
-    observeReveals();
-    initStats();
-    initTerminal();
+  tabsHome = makeTabs($("#homeTabs"), (tab) => {
+    $$("#homeTabs ~ .tab-panel").forEach((p) => { p.hidden = p.id !== `panel-${tab}`; });
   });
+  tabsProj = makeTabs($("#projTabs"), (tab) => {
+    state.filter = tab;
+    renderProjects();
+  });
+
+  sky = new Sky($("#sky"), { mode: resolveSky(state.sky), reduced: !motionOK() });
+  setSky(state.sky);
+  $$("[data-sky]").forEach((b) => b.addEventListener("click", () => setSky(b.dataset.sky, b.closest(".settings") === null)));
+  const hint = $("#skyHint");
+  $("#sky").addEventListener("pointerdown", () => hint.classList.add("is-gone"), { once: true });
+  setTimeout(() => hint.classList.add("is-gone"), 9000);
+  setInterval(() => { if (state.sky === "auto") sky.setMode(Sky.autoMode()); }, 5 * 60 * 1000);
+
+  // Rows and cards that open the project drawer.
+  document.addEventListener("click", (e) => {
+    const p = e.target.closest("[data-project]");
+    if (p) openProject(p.dataset.project);
+    if (e.target.closest("[data-copy-link]")) copyLink();
+  });
+
+  initPointer();
+  initDialogs();
+  initPalette();
+  initSettings();
+  initTerminal();
+  initShortcuts();
+  initCounts();
+
+  renderFeed();
+  renderFeatured();
+  renderContact();
+  startTyped();
+
+  addEventListener("hashchange", route);
+  addEventListener("resize", syncIndicators);
+  if (document.fonts) document.fonts.ready.then(syncIndicators);
+  route();
 
   loadGitHub();
 })();
